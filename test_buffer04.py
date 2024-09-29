@@ -1,9 +1,7 @@
 import torch
 import numpy as np
 from ClassAmoeba import Amoeba
-# from EncoderClass import SimpleEncoder01, BiharyEncoder01
-# from ModelClass import SimpleModel01, SimpleModel02, BiharyModel01, BiharyModel02
-from ClassModel import TestModel01
+from ClassModel import DeepMindModel01
 from ClassEvaluator import EvalBuffer
 from torchinfo import summary
 from line_profiler_pycharm import profile
@@ -47,7 +45,7 @@ def move_cycle(args: dict):
                                       dtype=torch.long, device=args.get('CPU_device'))
                 new_idx[:, 0] = eval_table_idx
                 new_idx[:, 1] = leaf_idx[eval_table_idx]
-                buffer.add_positions(new_position, new_idx)
+                buffer.add_states(new_position, new_idx)
 
             if buffer.num_data >= buffer.min_batch_size:
 
@@ -56,13 +54,14 @@ def move_cycle(args: dict):
                 position_CUDA = position_data.to(args.get('CUDA_device'), non_blocking=True)
                 evaluated_table_idx = idx_data[:, 0]
                 count_eval[evaluated_table_idx] += 1
+
                 with torch.no_grad():
                     result_CUDA = model(position_CUDA)
 
                 result = result_CUDA.to(args.get('CPU_device'), non_blocking=True)
+
                 # update_tree(result, idx_data)
                 new_tree = torch.sum(result) + torch.sum(idx_data)  # just something for testing
-
                 # Add back the evaluated tables that still need more MC runs to active tables
                 active_table_idx = torch.cat((active_table_idx, evaluated_table_idx), dim=0)
 
@@ -91,7 +90,7 @@ args = {
     'buffer_size': 50000
 }
 game = Amoeba(args)
-model = TestModel01(args, 32)
+model = DeepMindModel01(args, 32)
 model.eval()
 buffer = EvalBuffer(args, 128, 128)
 

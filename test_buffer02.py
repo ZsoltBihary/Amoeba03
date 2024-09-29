@@ -3,7 +3,7 @@ import numpy as np
 from ClassAmoeba import Amoeba
 # from EncoderClass import SimpleEncoder01, BiharyEncoder01
 # from ModelClass import SimpleModel01, SimpleModel02, BiharyModel01, BiharyModel02
-from ClassModel import TestModel01
+from ClassModel import DeepMindModel01
 # from EvaluatorClass import Evaluator
 from torchinfo import summary
 from line_profiler_pycharm import profile
@@ -44,7 +44,7 @@ args = {
 
 batch_size = args.get('num_table') // 8
 game = Amoeba(args)
-model = TestModel01(args, 96)
+model = DeepMindModel01(args, 96)
 model.eval()
 position = torch.ones((batch_size, game.action_size),
                       dtype=torch.float32, device=args.get('CPU_device'))

@@ -3,7 +3,7 @@ import numpy as np
 from ClassAmoeba import Amoeba
 # from EncoderClass import SimpleEncoder01, BiharyEncoder01
 # from ModelClass import SimpleModel01, SimpleModel02, BiharyModel01, BiharyModel02
-from ClassModel import TestModel01
+from ClassModel import DeepMindModel01
 from ClassEvaluator import EvalBuffer
 from torchinfo import summary
 from line_profiler_pycharm import profile
@@ -23,6 +23,7 @@ def move_cycle(args: dict):
     count_eval = torch.zeros(args.get('num_table'),
                              dtype=torch.int32, device=args.get('CPU_device'))
     buffer.empty()
+    result_is_calculated = False
     # In principle, we want to organize a loop that simultaneously performs the MC searches
     # on all the tables ...
     # But for testing, we break it up to two nested loops ...
@@ -30,6 +31,17 @@ def move_cycle(args: dict):
     while True:
 
         for i_search in range(100):
+
+            if buffer.num_data >= buffer.min_batch_size:
+
+                position_data, idx_data = buffer.get_positions()
+                # position_data = position_data.pin_memory()
+                position_CUDA = position_data.to(args.get('CUDA_device'), non_blocking=True)
+                evaluated_table_idx = idx_data[:, 0]
+                count_eval[evaluated_table_idx] += 1
+                result_is_calculated = True
+                with torch.no_grad():
+                    result_CUDA = model(position_CUDA)
 
             # collect leaf positions + index metadata
             leaf_idx[active_table_idx] += 1
@@ -47,20 +59,14 @@ def move_cycle(args: dict):
                                       dtype=torch.long, device=args.get('CPU_device'))
                 new_idx[:, 0] = eval_table_idx
                 new_idx[:, 1] = leaf_idx[eval_table_idx]
-                buffer.add_positions(new_position, new_idx)
+                buffer.add_states(new_position, new_idx)
 
-            if buffer.num_data >= buffer.min_batch_size:
+            if result_is_calculated:
+                result = result_CUDA.to(args.get('CPU_device'), non_blocking=False)
+                result_is_calculated = False
 
-                position_data, idx_data = buffer.get_positions()
-                # position_data = position_data.pin_memory()
-                position_CUDA = position_data.to(args.get('CUDA_device'), non_blocking=True)
-                evaluated_table_idx = idx_data[:, 0]
-                count_eval[evaluated_table_idx] += 1
-                with torch.no_grad():
-                    result_CUDA = model(position_CUDA)
-
-                result = result_CUDA.to(args.get('CPU_device'), non_blocking=True)
                 # update_tree(result, idx_data)
+                # torch.cuda.synchronize()
                 new_tree = torch.sum(result) + torch.sum(idx_data)  # just something for testing
 
                 # Add back the evaluated tables that still need more MC runs to active tables
@@ -85,15 +91,15 @@ args = {
     'CUDA_device': 'cuda' if torch.cuda.is_available() else 'cpu',
     # 'CUDA_device': 'cpu',
     'num_child': 50,
-    'num_table': 300,
+    'num_table': 400,
     'num_MC': 500,
     'max_moves': 5,
     'buffer_size': 50000
 }
 game = Amoeba(args)
-model = TestModel01(args, 32)
+model = DeepMindModel01(args, 32)
 model.eval()
-buffer = EvalBuffer(args, 128, 128)
+buffer = EvalBuffer(args, 100, 128)
 
 start = time.time()
 

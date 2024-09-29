@@ -3,7 +3,7 @@ import numpy as np
 from ClassAmoeba import Amoeba
 # from EncoderClass import SimpleEncoder01, BiharyEncoder01
 # from ModelClass import SimpleModel01, SimpleModel02, BiharyModel01, BiharyModel02
-from ClassModel import TestModel01
+from ClassModel import DeepMindModel01
 # from EvaluatorClass import Evaluator
 from torchinfo import summary
 from line_profiler_pycharm import profile
@@ -55,7 +55,7 @@ args = {
 # print(torch.cuda.is_available())
 
 game = Amoeba(args)
-model = TestModel01(args, 50)
+model = DeepMindModel01(args, 50)
 
 for i in range(10):
     print(i)
