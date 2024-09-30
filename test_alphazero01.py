@@ -16,7 +16,7 @@ args = {
     # 'CUDA_device': 'cpu',
     'num_child': 50,
     'num_table': 400,
-    'num_MC': 500,
+    'num_MC': 200,
     'num_moves': 5,
     'eval_batch_size': 128,
     'res_channels': 32,

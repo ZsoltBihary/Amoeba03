@@ -14,7 +14,6 @@ class AlphaZero:
         self.game = game
         self.terminal_check = terminal_check
         self.model = model
-        # self.evaluate = evaluate01
         # Often used parameters
         self.num_table = args.get('num_table')
         self.num_child = args.get('num_child')
@@ -33,7 +32,7 @@ class AlphaZero:
         # Keep track of tables under evaluation, and evaluation status
         self.evaluated_table_idx = torch.arange(args.get('num_table'), dtype=torch.long)
         self.evaluation_is_on = False
-        # Keep track of root player, node player, and root position, node position on all tables
+        # Keep track of root player, node player, and current position, node position on all tables
         self.root_player = torch.ones(self.num_table, dtype=torch.int32)
         self.root_position = torch.zeros((self.num_table, self.action_size), dtype=torch.int32)
         self.node_player = torch.ones(self.num_table, dtype=torch.int32)
@@ -79,6 +78,23 @@ class AlphaZero:
         child_node = start_node + node_offset
         return child_table, child_node, node_offset
 
+    def best_child(self):
+        parent_table = self.search_table_idx
+        parent_node = self.search_node_idx[parent_table]
+        child_table, child_node, node_offset = self.find_children(parent_table, parent_node)
+        # Let us calculate the ucb for all children ...
+        parent_player = self.node_player[parent_table].view(-1, 1)
+        parent_count = self.tree['count'][parent_table, parent_node].reshape(-1, 1)
+        child_count = self.tree['count'][child_table, child_node]
+        child_q = self.tree['value'][child_table, child_node]
+        child_prior = self.tree['prior'][child_table, child_node]
+        ucb = (parent_player * child_q +
+               2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1))
+        best_offset = torch.argmax(ucb, dim=1)
+        best_child_node = self.tree['start_child_idx'][parent_table, parent_node] + best_offset
+
+        return best_child_node
+
     @profile
     def search_tree(self):
         # collect leaf positions + index metadata
@@ -98,7 +114,10 @@ class AlphaZero:
             num_search = self.search_table_idx.shape[0]
             if num_search > 0:
                 # Find best child
-                best_node_idx = self.search_node_idx[self.search_table_idx] + 1  # just for testing ...
+                best_node_idx = self.best_child()
+
+                # best_node_idx = self.search_node_idx[self.search_table_idx] + 1  # just for testing ...
+
                 self.search_node_idx[self.search_table_idx] = best_node_idx
                 action = self.tree['action'][self.search_table_idx, best_node_idx]
                 self.node_position[self.search_table_idx, action] = self.node_player[self.search_table_idx]
@@ -296,53 +315,6 @@ class AlphaZero:
 #         leaf_state = self.current_state + all_moves
 #
 #         return leaf_node, leaf_player, leaf_state
-#
-#     @profile
-#     def expand(self, leaf_node, leaf_player, action, prob, is_terminal):
-#
-#         all_table = torch.arange(self.num_table, dtype=torch.long, device=self.device)
-#
-#         self.tree['player'][all_table, leaf_node] = leaf_player
-#         self.tree['is_terminal'][all_table, leaf_node] = is_terminal
-#
-#         # Collect table indices where is_terminal = False, we will expand these ...
-#         # First deal with the parent leaf nodes ...
-#
-#         parent_table = torch.masked_select(all_table, ~is_terminal)
-#         parent_node = leaf_node[parent_table]
-#         self.tree['is_leaf'][parent_table, parent_node] = False
-#         self.tree['start_child'][parent_table, parent_node] = self.tree['next_node'][parent_table]
-#
-#         self.tree['is_leaf'][parent_table, parent_node] = False
-#
-#         self.tree['start_child'][parent_table, parent_node] = self.tree['next_node'][parent_table]
-#
-#         # Now deal with the children nodes ...
-#         child_table, child_node, node_offset = self.find_children(parent_table, parent_node)
-#         self.tree['parent'][child_table, child_node] = parent_node.reshape(-1, 1)
-#         self.tree['action'][child_table, child_node] = action[child_table, node_offset]
-#         self.tree['prior'][child_table, child_node] = prob[child_table, node_offset]
-#
-#         self.tree['next_node'][parent_table] += self.num_child
-#
-#         return 0  # space-holder ...
-#
-#     @profile
-#     def back_propagate(self, leaf_node, value):
-#         table = torch.arange(self.num_table, dtype=torch.long, device=self.device)
-#         node = leaf_node[table]
-#
-#         while table.numel() > 0:
-#             # back-propagate ...
-#             self.tree['count'][table, node] += 1
-#             self.tree['value_sum'][table, node] += value[table]
-#             self.tree['value'][table, node] = (self.tree['value_sum'][table, node] /
-#                                                self.tree['count'][table, node])
-#             node = self.tree['parent'][table, node]
-#             table = table[node >= 0]
-#             node = node[node >= 0]
-#
-#         return 0
 #
 #     @profile
 #     def run_MC_path(self):
