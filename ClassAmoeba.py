@@ -10,15 +10,24 @@ class Amoeba:
         self.action_size = self.board_size * self.board_size  # this is also the state size
 
         self.symmetry_index, self.inv_symmetry_index = self.calculate_symmetry()
-        a = 0
 
-    def get_empty_state(self, n_state: int) -> torch.Tensor:
-        return torch.zeros((n_state, self.action_size), dtype=torch.int32,
-                           device=self.args.get('device'))
+    def get_empty_position(self):
+        return torch.zeros(self.action_size, dtype=torch.int32)
 
-    def get_random_state(self, n_state: int, n_plus: int, n_minus: int) -> torch.Tensor:
+    def get_new_position(self, position, player, action):
+        new_position = position.clone()
+        if new_position[action] == 0:  # Assuming 0 means the position is unoccupied
+            new_position[action] = player
+        else:
+            raise ValueError("Invalid action: The position is already occupied.")
+        return new_position
 
-        state = self.get_empty_state(n_state)
+    def get_empty_positions(self, n_state: int):
+        return torch.zeros((n_state, self.action_size), dtype=torch.int32)
+
+    def get_random_positions(self, n_state: int, n_plus: int, n_minus: int) -> torch.Tensor:
+
+        state = self.get_empty_positions(n_state)
         for i in range(n_state):
             for _ in range(n_plus):
                 valid_indices = torch.nonzero(state[i] == 0)

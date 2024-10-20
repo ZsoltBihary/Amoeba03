@@ -22,35 +22,57 @@ class TerminalCheck01(nn.Module):
     def __init__(self, args: dict):
         super(TerminalCheck01, self).__init__()
         self.board_size = args.get('board_size')
+        self.win_length = args.get('win_length')
         self.device = args.get('CUDA_device')
 
-        kernel = torch.tensor([
-            [[[0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0],
-              [1, 1, 1, 1, 1],
-              [0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0]]],
+        if self.win_length == 5:
+            self.padding = 2
+            kernel = torch.tensor([
+                [[[0, 0, 0, 0, 0],
+                  [0, 0, 0, 0, 0],
+                  [1, 1, 1, 1, 1],
+                  [0, 0, 0, 0, 0],
+                  [0, 0, 0, 0, 0]]],
 
-            [[[0, 0, 1, 0, 0],
-              [0, 0, 1, 0, 0],
-              [0, 0, 1, 0, 0],
-              [0, 0, 1, 0, 0],
-              [0, 0, 1, 0, 0]]],
+                [[[0, 0, 1, 0, 0],
+                  [0, 0, 1, 0, 0],
+                  [0, 0, 1, 0, 0],
+                  [0, 0, 1, 0, 0],
+                  [0, 0, 1, 0, 0]]],
 
-            [[[1, 0, 0, 0, 0],
-              [0, 1, 0, 0, 0],
-              [0, 0, 1, 0, 0],
-              [0, 0, 0, 1, 0],
-              [0, 0, 0, 0, 1]]],
+                [[[1, 0, 0, 0, 0],
+                  [0, 1, 0, 0, 0],
+                  [0, 0, 1, 0, 0],
+                  [0, 0, 0, 1, 0],
+                  [0, 0, 0, 0, 1]]],
 
-            [[[0, 0, 0, 0, 1],
-              [0, 0, 0, 1, 0],
-              [0, 0, 1, 0, 0],
-              [0, 1, 0, 0, 0],
-              [1, 0, 0, 0, 0]]]
-        ], dtype=torch.float32)
+                [[[0, 0, 0, 0, 1],
+                  [0, 0, 0, 1, 0],
+                  [0, 0, 1, 0, 0],
+                  [0, 1, 0, 0, 0],
+                  [1, 0, 0, 0, 0]]]
+            ], dtype=torch.float32)
+        else:  # meaning self.win_length == 3
+            self.padding = 1
+            kernel = torch.tensor([
+                [[[0, 0, 0],
+                  [1, 1, 1],
+                  [0, 0, 0],]],
 
-        self.dir_conv = CustomConvLayer(kernel, 2)
+                [[[0, 1, 0],
+                  [0, 1, 0],
+                  [0, 1, 0]]],
+
+                [[[1, 0, 0],
+                  [0, 1, 0],
+                  [0, 0, 1]]],
+
+                [[[0, 0, 1],
+                  [0, 1, 0],
+                  [1, 0, 0]]]
+            ], dtype=torch.float32)
+
+        self.dir_conv = CustomConvLayer(kernel, self.padding)
         self.to(self.device)
 
     @profile
@@ -59,9 +81,24 @@ class TerminalCheck01(nn.Module):
         dir_sum = self.dir_conv(x)
         dir_max = torch.amax(dir_sum, dim=(1, 2, 3))
         dir_min = torch.amin(dir_sum, dim=(1, 2, 3))
-        sum_abs = torch.sum(torch.abs(state_CUDA), dim=1) + 0.1
+        sum_abs = torch.sum(torch.abs(state_CUDA), dim=1)
 
         return torch.stack([dir_max, dir_min, sum_abs], dim=1)
+
+
+class TrivialModel01(nn.Module):
+    def __init__(self, args: dict):
+        super(TrivialModel01, self).__init__()
+        self.device = args.get('CUDA_device')
+        self.to(self.device)
+
+    @profile
+    def forward(self, state_CUDA):
+        # # policy head
+        logit = state_CUDA * 0.0
+        # value head
+        value = torch.sum(state_CUDA, dim=1) * 0.05 + 0.02
+        return logit, value
 
 
 class InputBlock(nn.Module):
@@ -164,7 +201,8 @@ class ValueHead01(nn.Module):
         x = self.relu(x)
         x = self.lin2(x)
         value = self.tanh(x)
-        return value
+
+        return torch.squeeze(value, dim=1)
 
 
 class DeepMindModel01(nn.Module):
