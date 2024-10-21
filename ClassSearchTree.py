@@ -8,49 +8,45 @@ import torch
 from line_profiler_pycharm import profile
 
 
-class GamePLay:
+class SearchTree:
     def __init__(self, args: dict, game, terminal_check, model):
+        # ***** These are constant parameters that class methods never modify *****
         self.args = args
         self.game = game
         self.terminal_check = terminal_check
         self.model = model
         # Often used parameters
         self.action_size = game.action_size
-        self.num_MC = args.get('num_MC')
-        # self.num_branch = args.get('num_branch')
-        self.num_leaf = args.get('num_leaf')
-        self.num_node = self.num_MC * self.num_leaf * self.action_size + 10
+        self.num_MC = args.get('num_MC')          
         self.CUDA_device = args.get('CUDA_device')
-
-        # Set up search tree
-        self.tree = {
-            'is_leaf': torch.ones(self.num_node, dtype=torch.bool),
-            'is_terminal': torch.zeros(self.num_node, dtype=torch.bool),
-            'count': torch.zeros(self.num_node, dtype=torch.int32),
-            'value_sum': torch.zeros(self.num_node, dtype=torch.float32),
-            'value': torch.zeros(self.num_node, dtype=torch.float32),
-            'start_child_idx': 2 * torch.ones(self.num_node, dtype=torch.long),
-            'num_child': torch.zeros(self.num_node, dtype=torch.long),
-            'action': torch.zeros(self.num_node, dtype=torch.long),
-            'prior': torch.zeros(self.num_node, dtype=torch.float32),
-            'next_node_idx': 2
-        }
-
-        # Set up leaf buffer
-        self.i_leaf = 0
-        # self.n_leaf = 0
+        # Parameters for tree and leaf buffer
+        self.num_leaf = args.get('num_leaf')        
+        self.num_node = self.num_MC * self.num_leaf * self.action_size + 10
         self.max_depth = self.action_size + 1
-        self.leaf_buffer = {
-            'node_idx': torch.zeros((self.num_leaf, self.max_depth), dtype=torch.long),
-            'leaf_idx': torch.zeros(self.num_leaf, dtype=torch.long),
-            'player': torch.ones(self.num_leaf, dtype=torch.int32),
-            'position': torch.zeros((self.num_leaf, self.action_size), dtype=torch.int32),
-            'is_terminal': torch.zeros(self.num_leaf, dtype=torch.bool),
-            'policy': torch.zeros((self.num_leaf, self.action_size), dtype=torch.float32),
-            'value': torch.zeros(self.num_leaf, dtype=torch.float32),
-            'multiplicity': torch.ones(self.num_leaf, dtype=torch.int32)
-        }
+        self.root_node = 1
 
+        # ***** These are variables that class methods will modify *****
+        # Set up tree
+        self.next_node = 2
+        self.is_leaf = torch.ones(self.num_node, dtype=torch.bool)
+        self.is_terminal = torch.zeros(self.num_node, dtype=torch.bool)
+        self.count = torch.zeros(self.num_node, dtype=torch.int32)
+        self.value_sum = torch.zeros(self.num_node, dtype=torch.float32)
+        self.value = torch.zeros(self.num_node, dtype=torch.float32)
+        self.start_child = 2 * torch.ones(self.num_node, dtype=torch.long)
+        self.num_child = torch.zeros(self.num_node, dtype=torch.long)
+        self.action = torch.zeros(self.num_node, dtype=torch.long)
+        self.prior = torch.zeros(self.num_node, dtype=torch.float32)
+        self.ucb = torch.zeros(self.num_node, dtype=torch.float32)       
+        # Set up leaf buffer
+        self.leaf_path = torch.zeros((self.num_leaf, self.max_depth), dtype=torch.long)
+        self.leaf_node = torch.zeros(self.num_leaf, dtype=torch.long)
+        self.leaf_player = torch.ones(self.num_leaf, dtype=torch.int32)
+        self.leaf_position = torch.zeros((self.num_leaf, self.action_size), dtype=torch.int32)
+        self.is_terminal = torch.zeros(self.num_leaf, dtype=torch.bool)
+        self.policy = torch.zeros((self.num_leaf, self.action_size), dtype=torch.float32)
+        self.value = torch.zeros(self.num_leaf, dtype=torch.float32)
+       
     def reset_tree(self):
         # Set up search tree
         self.tree['is_leaf'][:] = True
