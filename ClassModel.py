@@ -14,7 +14,7 @@ class CustomConvLayer(nn.Module):
     def forward(self, x):
         # Apply the convolution using the kernel
         # Since this is a predefined kernel, we do not have bias
-        return F.conv2d(x, self.kernel, padding=self.padding)  # padding=2 to keep input size
+        return F.conv2d(x, self.kernel, padding=self.padding)
 
 
 class TerminalCheck01(nn.Module):
@@ -86,6 +86,38 @@ class TerminalCheck01(nn.Module):
         return torch.stack([dir_max, dir_min, sum_abs], dim=1)
 
 
+class TrivialModel02(nn.Module):
+    def __init__(self, args: dict):
+        super(TrivialModel02, self).__init__()
+        self.board_size = args.get('board_size')
+        self.device = args.get('CUDA_device')
+
+        sum_kernel = 0.1 * torch.ones((1, 1, 3, 3), dtype=torch.float32)
+
+        self.sum_conv = CustomConvLayer(sum_kernel, 1)
+        self.to(self.device)
+
+    @profile
+    def forward(self, state_CUDA):
+        x = state_CUDA.view(state_CUDA.shape[0], 1, self.board_size, self.board_size)
+        sum_abs_x = self.sum_conv(torch.abs(x)+0.2)
+        # policy head
+        logit = sum_abs_x.reshape(sum_abs_x.shape[0], -1)
+        # value head
+        value = torch.sum(state_CUDA, dim=1) * 0.0
+        return logit, value
+
+    # @profile
+    # def forward(self, state_CUDA):
+    #
+    #     dir_sum = self.dir_conv(x)
+    #     dir_max = torch.amax(dir_sum, dim=(1, 2, 3))
+    #     dir_min = torch.amin(dir_sum, dim=(1, 2, 3))
+    #     sum_abs = torch.sum(torch.abs(state_CUDA), dim=1)
+    #
+    #     return torch.stack([dir_max, dir_min, sum_abs], dim=1)
+
+
 class TrivialModel01(nn.Module):
     def __init__(self, args: dict):
         super(TrivialModel01, self).__init__()
@@ -97,7 +129,8 @@ class TrivialModel01(nn.Module):
         # # policy head
         logit = state_CUDA * 0.0
         # value head
-        value = torch.sum(state_CUDA, dim=1) * 0.05 + 0.02
+        # value = torch.sum(state_CUDA, dim=1) * 0.05 + 0.02
+        value = torch.sum(state_CUDA, dim=1) * 0.0
         return logit, value
 
 

@@ -264,8 +264,8 @@ class SearchTree:
         # self.game.print_board(position)
         # print('move count: \n', action_count.view(self.game.board_size, -1))
         # print('move weight: \n', action_weight.view(self.game.board_size, -1))
-        print('value = ', root_value)
-        print('move policy: \n', action_policy.view(self.game.board_size, -1))
+        # print('value = ', root_value)
+        # print('move policy: \n', action_policy.view(self.game.board_size, -1))
 
         return action_policy, root_value
 
