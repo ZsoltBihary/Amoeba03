@@ -20,8 +20,10 @@ class SearchTree:
         self.num_MC = args.get('num_MC')          
         self.CUDA_device = args.get('CUDA_device')
         # Parameters for tree and leaf buffer
+        self.max_child = args.get('max_child')
         self.num_leaf = args.get('num_leaf')        
         self.num_node = self.num_MC * self.num_leaf * self.action_size + 10
+        self.num_node = self.num_MC * self.num_leaf * self.max_child + 10
         self.max_depth = self.action_size + 1
         self.root_node = 1
 
@@ -111,7 +113,7 @@ class SearchTree:
             # ucb = self.calc_ucb(node_idx, player)
             best_offset = torch.argmax(self.ucb[children])
             best_child = self.start_child[node] + best_offset
-            self.ucb[best_child] -= 0.01
+            self.ucb[best_child] -= 0.05
             best_action = self.action[best_child]
             position = self.game.get_new_position(position, player, best_action)
             player = -player
@@ -195,14 +197,22 @@ class SearchTree:
                 self.is_leaf[parent_i] = False
                 actions = all_actions[legal_mask[i]]
                 policy_logit = self.leaf_logit[i, legal_mask[i]]
-                policy = torch.nn.functional.softmax(policy_logit, dim=0)
-                n_child = actions.shape[0]
+
+                # Determine the number of children to select (use min to avoid selecting more than available)
+                n_child = min(self.max_child, policy_logit.shape[0])
+                # Get the top n_child values and their indices from policy_logit
+                top_values, top_indices = torch.topk(policy_logit, n_child)
+                # Use the indices to select the corresponding actions
+                selected_policy_logit = top_values
+                selected_actions = actions[top_indices]
+
+                policy = torch.nn.functional.softmax(selected_policy_logit, dim=0)
                 start_children = self.next_node
                 end_children = start_children + n_child
 
                 self.start_child[parent_i] = start_children
                 self.num_child[parent_i] = n_child
-                self.action[start_children: end_children] = actions
+                self.action[start_children: end_children] = selected_actions
                 self.prior[start_children: end_children] = policy
                 self.parent[start_children: end_children] = parent_i
                 self.next_node += n_child

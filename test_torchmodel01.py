@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from ClassAmoeba import Amoeba
-from ClassModel import TerminalCheck01, DeepMindModel01
+from ClassModel import TerminalCheck01, DeepMindModel01, SimpleModel01
 from ClassAlphaZero import AlphaZero
 # from ClassEvaluator import EvaluationBuffer
 from torchinfo import summary
@@ -10,7 +10,7 @@ import time
 
 # Collect parameters in a dictionary
 args = {
-    'board_size': 15,
+    'board_size': 7,
     'win_length': 5,
     'CUDA_device': 'cuda' if torch.cuda.is_available() else 'cpu',
     # 'CUDA_device': 'cpu',
@@ -28,13 +28,17 @@ args = {
 
 game = Amoeba(args)
 terminal_check = TerminalCheck01(args)
-model = DeepMindModel01(args)
+# model = DeepMindModel01(args)
+model = SimpleModel01(args)
 model.eval()
 
-positions = game.get_random_state(10, 10, 10).to(dtype=torch.float32)
+positions = game.get_random_positions(2, 6, 4).to(dtype=torch.float32)
 position_CUDA = positions.cuda()
 game.print_board(positions[0, :])
 
-value, policy = model(position_CUDA)
+policy, value = model(position_CUDA)
+policy_int = (1 * policy[0].reshape(-1, args.get('board_size'))).to(device='cpu').detach().to(dtype=torch.int32).numpy()
+print(policy_int)
+print(value[0])
 
-summary(model, input_data=position_CUDA, verbose=1)
+# summary(model, input_data=position_CUDA, verbose=1)

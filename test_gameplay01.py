@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from ClassAmoeba import Amoeba
-from ClassModel import TerminalCheck01, TrivialModel01, DeepMindModel01
+from ClassModel import TerminalCheck01, TrivialModel01, DeepMindModel01, SimpleModel01
 from ClassGamePlay import GamePLay
 # from ClassAlphaZero import AlphaZero
 # from ClassEvaluator import EvaluationBuffer
@@ -11,8 +11,8 @@ import time
 
 # Collect parameters in a dictionary
 args = {
-    'board_size': 3,
-    'win_length': 3,
+    'board_size': 7,
+    'win_length': 5,
     'CUDA_device': 'cuda' if torch.cuda.is_available() else 'cpu',
     # 'CUDA_device': 'cpu',
     'num_branch': 2,
@@ -31,8 +31,8 @@ args = {
 
 game = Amoeba(args)
 terminal_check = TerminalCheck01(args)
-model = TrivialModel01(args)
-# model = DeepMindModel01(args)
+# model = TrivialModel01(args)
+model = SimpleModel01(args)
 model.eval()
 gplay = GamePLay(args, game, terminal_check, model)
 # n_states = 2

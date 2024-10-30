@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from ClassAmoeba import Amoeba
-from ClassModel import TerminalCheck01, TrivialModel01, TrivialModel02, DeepMindModel01
+from ClassModel import TerminalCheck01, TrivialModel01, TrivialModel02, SimpleModel01
 from ClassSearchTree import SearchTree
 # from ClassGamePlay import GamePLay
 # from ClassAlphaZero import AlphaZero
@@ -18,8 +18,8 @@ args = {
     # 'CUDA_device': 'cpu',
     'num_leaf': 32,
     # 'num_branch': 2,
-    'num_MC': 1000,
-    # 'num_child': 9,
+    'num_MC': 3000,
+    'max_child': 20,
     # 'num_table': 2,
     # 'num_moves': 5,
     # 'eval_batch_size': 128,
@@ -32,15 +32,15 @@ args = {
 
 game = Amoeba(args)
 terminal_check = TerminalCheck01(args)
-model = TrivialModel02(args)
-# model = DeepMindModel01(args)
+# model = TrivialModel02(args)
+model = SimpleModel01(args)
 model.eval()
 tree = SearchTree(args, game, terminal_check, model)
 player = 1
 position = game.get_empty_position()
-position[40] = 1
-position[41] = 1
-position[72] = 1
+position[46] = 1
+position[62] = -1
+# position[72] = 1
 
 start = time.time()
 
