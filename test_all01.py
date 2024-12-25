@@ -1,15 +1,15 @@
 import torch
-import numpy as np
+# import numpy as np
 from ClassAmoeba import Amoeba
-# from ClassModel import TerminalCheck01, TrivialModel01, TrivialModel02, SimpleModel01
-from ClassSearchTree import SearchTree
+from ClassModel import TerminalCheck01, TrivialModel01, TrivialModel02, SimpleModel01
+# from ClassSearchTree import SearchTree
+from ClassSearchEngine import SearchEngine
 # from ClassGamePlay import GamePLay
-# from ClassAlphaZero import AlphaZero
 # from ClassEvaluator import EvaluationBuffer
 # from torchinfo import summary
 # from line_profiler_pycharm import profile
 # from ClassTree import Tree
-import time
+# import time
 
 # Collect parameters in a dictionary
 args = {
@@ -20,49 +20,47 @@ args = {
     'num_leaf': 8,
     # 'num_branch': 2,
     'num_MC': 200,
-    'num_child': 20,
+    'num_child': 5,
     'num_table': 2,
     'num_agent': 6,
     # 'num_moves': 5,
-    'leaf_buffer_size': 128,
-    'eval_batch_size': 32,
-    'res_channels': 32,
-    'hid_channels': 16,
-    'num_res': 4,
-    'policy_hid_channels': 32,
-    'value_hid_dim': 64
+    'leaf_buffer_size': 32,
+    'eval_batch_size': 16
+    # 'res_channels': 32,
+    # 'hid_channels': 16,
+    # 'num_res': 4,
+    # 'policy_hid_channels': 32,
+    # 'value_hid_dim': 64
 }
 
 game = Amoeba(args)
-stree = SearchTree(args, game)
-stree.search_one_step()
-# stree.save_leaves()
+
+terminal_check = TerminalCheck01(args)
+# model = TrivialModel01(args)
+model = SimpleModel01(args)
+model.eval()
+
+root_player = torch.ones(args.get('num_table'), dtype=torch.int32)
+root_player[1] = -1
+root_position = game.get_empty_positions(args.get('num_table'))
+root_position[1, 0] = 1
+
+engine = SearchEngine(args, game, terminal_check, model)
+engine.reset(root_player, root_position)
+
+# stree = SearchTree(args, game, terminal_check, model)
+# stree.reset(root_player, root_position)
+# stree.analyze(root_player, root_position)
+
+# active = stree.activate_agents()
 
 a = 42
 
-# tree = Tree(3, 10, 4)
-#
-# tree.reset()
-# parent_table = torch.zeros(2, dtype=torch.long)
-# parent_table[1] = 2
-# parent_node = torch.zeros(2, dtype=torch.long)
-# parent_node[0] = 2
-# parent_node[1] = 4
-#
-# tree.get_children(parent_table, parent_node)
-# tree.best_child(parent_table, parent_node)
-# tree.allocate_child_block(parent_table, parent_node)
-# print(tree)
+# stree.search_one_step()
+# stree.save_leaves()
 
-#
 # terminal_check = TerminalCheck01(args)
 # model = TrivialModel02(args)
 # model = SimpleModel01(args)
 # model.eval()
 # tree = SearchTree(args, game, terminal_check, model)
-# player = 1
-# position = game.get_empty_position()
-# position[46] = 1
-# position[62] = -1
-# # position[72] = 1
-

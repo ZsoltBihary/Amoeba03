@@ -117,9 +117,9 @@ class TreeSearch:
     #     with torch.no_grad():
     #         logit, value = self.model(state_CUDA)
     #         logit = logit - torch.abs(state_CUDA) * 999999.9
-    #         policy = F.softmax(logit, dim=1)
+    #         logit = F.softmax(logit, dim=1)
     #
-    #     result_CUDA = torch.cat([policy, value, terminal_signal], dim=1)
+    #     result_CUDA = torch.cat([logit, value, terminal_signal], dim=1)
     #     return result_CUDA
 
     # @profile
@@ -151,8 +151,8 @@ class TreeSearch:
 
 #
 #     @profile
-#     def format_act_prob(self, policy):
-#         prob, act = torch.topk(policy, k=self.num_child, dim=1)
+#     def format_act_prob(self, logit):
+#         prob, act = torch.topk(logit, k=self.num_child, dim=1)
 #         # Change very low probabilities to 0.0 ...
 #         mask = prob < 0.0001
 #         prob[mask] = 0.0
@@ -223,8 +223,8 @@ class TreeSearch:
 #             child_table_idx, child_node_idx, node_offset = self.find_children(expand_table_idx, expand_node_idx)
 #             self.tree['parent_idx'][child_table_idx, child_node_idx] = expand_node_idx.reshape(-1, 1)
 #
-#             policy = result[expand_mask, : -4]
-#             action, prob = self.format_act_prob(policy)
+#             logit = result[expand_mask, : -4]
+#             action, prob = self.format_act_prob(logit)
 #             self.tree['action'][child_table_idx, child_node_idx] = action
 #             self.tree['prior'][child_table_idx, child_node_idx] = prob
 #

@@ -25,6 +25,10 @@ class LeafBuffer:
         self.batch_size = 0
         # self.batch_full = False
 
+    def reset(self):
+        self.next_idx = 0
+        self.batch_size = 0
+
     def add_leaves(self, tables, nodes,  players, positions, paths, depths):
         end_idx = self.next_idx + tables.shape[0]
         self.table[self.next_idx: end_idx] = tables
@@ -80,7 +84,7 @@ class LeafBuffer:
     #     players = self.player[: self.batch_size]
     #     positions = self.position[: self.batch_size, :]
     #
-    #     policies = self.policy[: self.batch_size, :]
+    #     policies = self.logit[: self.batch_size, :]
     #     values = self.value[: self.batch_size]
     #     are_terminal = self.is_terminal[: self.batch_size]
     #

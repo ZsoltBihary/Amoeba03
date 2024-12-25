@@ -9,7 +9,7 @@ class BufferEngine:
         :param max_size: Maximum number of entries the buffer can hold.
         :param position_shape: Shape of each position tensor (e.g., (state_size,)).
         :param value_shape: Shape of each value tensor (e.g., (1,)).
-        :param policy_shape: Shape of each policy tensor (e.g., (action_size,)).
+        :param policy_shape: Shape of each logit tensor (e.g., (action_size,)).
         :param threshold: The minimum number of entries before processing is triggered.
         :param batch_size: Number of entries to process at a time.
         :param device: Device where the position tensors are stored ('cpu' or 'cuda').
@@ -70,7 +70,7 @@ class BufferEngine:
 
         # Evaluate using the model
         with torch.no_grad():
-            values, policies = model(batch_positions)  # Assuming the model returns (value, policy)
+            values, policies = model(batch_positions)  # Assuming the model returns (value, logit)
 
         # Store results in the result buffer
         self.value_buffer[self.result_size:self.result_size + eval_batch_size] = values.cpu()
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         max_size=800,
         position_shape=(3,),  # Example shape for position tensor
         value_shape=(1,),     # Example shape for value tensor
-        policy_shape=(5,),    # Example shape for policy tensor
+        policy_shape=(5,),    # Example shape for logit tensor
         threshold=200,
         batch_size=300,
         device='cpu'

@@ -46,7 +46,7 @@ class GamePLay:
             'player': torch.ones(self.num_leaf, dtype=torch.int32),
             'position': torch.zeros((self.num_leaf, self.action_size), dtype=torch.int32),
             'is_terminal': torch.zeros(self.num_leaf, dtype=torch.bool),
-            'policy': torch.zeros((self.num_leaf, self.action_size), dtype=torch.float32),
+            'logit': torch.zeros((self.num_leaf, self.action_size), dtype=torch.float32),
             'value': torch.zeros(self.num_leaf, dtype=torch.float32),
             'multiplicity': torch.ones(self.num_leaf, dtype=torch.int32)
         }
@@ -72,7 +72,7 @@ class GamePLay:
         self.leaf_buffer['player'][:] = 1
         self.leaf_buffer['position'][:, :] = 0
         self.leaf_buffer['is_terminal'][:] = False
-        self.leaf_buffer['policy'][:, :] = 0.0
+        self.leaf_buffer['logit'][:, :] = 0.0
         self.leaf_buffer['value'][:] = 0.0
         self.leaf_buffer['multiplicity'][:] = 1
 
@@ -297,6 +297,6 @@ class GamePLay:
         # self.game.print_board(position)
         # print('move count: \n', action_count.view(self.game.board_size, -1))
         # print('move weight: \n', action_weight.view(self.game.board_size, -1))
-        print('move policy: \n', action_policy.view(self.game.board_size, -1))
+        print('move logit: \n', action_policy.view(self.game.board_size, -1))
 
         return action_policy, root_value

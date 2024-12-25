@@ -130,7 +130,7 @@ class SimpleModel01(nn.Module):
         encoded_input = self.encoder.encode(board_zero, line_type)
 
         # def forward(self, encoded_input):
-        # At this point, this model basically implements the policy and value heads ...
+        # At this point, this model basically implements the logit and value heads ...
         # So let us pretend we had some (RESNET) feature processing already,
         #   resulting in x with the same shape as the encoded_input ...
 
@@ -147,8 +147,8 @@ class SimpleModel01(nn.Module):
 
         policy = torch.softmax(policy_logit, dim=1) * state_zero
         policy = F.normalize(policy, p=1, dim=1)
-        # print("sum(policy) = ", torch.sum(policy, dim=1))
-        # policy is an estimation for the action probabilities played by the first player ...
+        # print("sum(logit) = ", torch.sum(logit, dim=1))
+        # logit is an estimation for the action probabilities played by the first player ...
         # Here we estimate the action probabilities p_j played by the second player ...
         p_i = torch.clamp(policy, max=0.99)
         odds_i = p_i / (1.0 - p_i)
@@ -181,7 +181,7 @@ class SimpleModel01(nn.Module):
 #         board_type, line_type = self.interpret(state_CUDA)
 #         # x = state_CUDA.view(state_CUDA.shape[0], 1, self.board_size, self.board_size)
 #         # sum_abs_x = self.sum_conv(torch.abs(x)+0.2)
-#         # # policy head
+#         # # logit head
 #         # logit = sum_abs_x.reshape(sum_abs_x.shape[0], -1)
 #         # # value head
 #         # value = torch.sum(state_CUDA, dim=1) * 0.0
@@ -285,7 +285,7 @@ class TrivialModel02(nn.Module):
     def forward(self, state_CUDA):
         x = state_CUDA.view(state_CUDA.shape[0], 1, self.board_size, self.board_size)
         sum_abs_x = self.sum_conv(torch.abs(x)+0.2)
-        # policy head
+        # logit head
         logit = sum_abs_x.reshape(sum_abs_x.shape[0], -1)
         # value head
         value = torch.sum(state_CUDA, dim=1) * 0.0
@@ -300,7 +300,7 @@ class TrivialModel01(nn.Module):
 
     @profile
     def forward(self, state_CUDA):
-        # # policy head
+        # # logit head
         logit = state_CUDA * 0.0
         # value head
         # value = torch.sum(state_CUDA, dim=1) * 0.05 + 0.02
@@ -446,7 +446,7 @@ class DeepMindModel01(nn.Module):
         # residual tower
         for res_block in self.res_tower:
             x = res_block(x)
-        # policy head
+        # logit head
         logit = self.policy_head(x)
         # value head
         value = self.value_head(x)
