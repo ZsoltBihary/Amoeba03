@@ -16,12 +16,12 @@ class SearchTree:
         self.next_node = 2 * torch.ones(self.num_table, dtype=torch.long)
         self.is_leaf = torch.ones((self.num_table, self.num_node), dtype=torch.bool)
         self.is_terminal = torch.zeros((self.num_table, self.num_node), dtype=torch.bool)
-        self.player = torch.ones((self.num_table, self.num_node), dtype=torch.int32)
+        # self.player = torch.ones((self.num_table, self.num_node), dtype=torch.int32)
         self.count = torch.zeros((self.num_table, self.num_node), dtype=torch.int32)
         self.value_sum = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
         self.value = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
         self.start_child = 2 * torch.ones((self.num_table, self.num_node), dtype=torch.long)
-        self.parent = torch.ones((self.num_table, self.num_node), dtype=torch.long)
+        # self.parent = torch.ones((self.num_table, self.num_node), dtype=torch.long)
         self.action = torch.zeros((self.num_table, self.num_node), dtype=torch.long)
         self.prior = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
         self.ucb = -99999.9 * torch.ones((self.num_table, self.num_node), dtype=torch.float32)
@@ -30,13 +30,16 @@ class SearchTree:
     def reset(self):
         self.next_node[:] = 2
         self.is_leaf[:, :] = True
+        # TODO: just for testing ... begin
+        self.is_leaf[:, 1] = False
+        # TODO: just for testing ... end
         self.is_terminal[:, :] = False
-        self.player[:, :] = 0
+        # self.player[:, :] = 0
         self.count[:, :] = 0
         self.value_sum[:, :] = 0.0
         self.value[:, :] = 0.0
         self.start_child[:, :] = 2
-        self.parent[:, :] = 1
+        # self.parent[:, :] = 1
         self.action[:, :] = 0
         self.prior[:, :] = 0
         self.ucb[:, :] = -99999.9
@@ -44,12 +47,13 @@ class SearchTree:
         return
 
     def get_children(self, parent_table, parent_node):
-        child_table = parent_table.unsqueeze(1).repeat(1, self.num_child)
+        # child_table = parent_table.unsqueeze(1).repeat(1, self.num_child)
         # Add the start index to the offsets to get the actual indices ... relying on broadcasting here ...
         start_node = self.start_child[parent_table, parent_node].reshape(-1, 1)
         node_offset = torch.arange(self.num_child, dtype=torch.long).reshape(1, -1)
         child_node = start_node + node_offset
-        return child_table, child_node, node_offset
+        # return child_table, child_node, node_offset
+        return child_node
 
     def update_ucb(self, table, parent, child, parent_player):
         # table, parent, child, parent_player = self.child_buffer.get_data()
@@ -103,9 +107,9 @@ class SearchTree:
         return
 
     def calc_priors(self, logit):
-        top_values, top_action = torch.topk(logit, self.num_child, dim=1)
+        top_values, top_actions = torch.topk(logit, self.num_child, dim=1)
         top_prior = torch.softmax(top_values, dim=1)
-        return top_action, top_prior
+        return top_actions, top_prior
 
     def expand(self, table, node, player, position, logit, value):
         # Here we assume that (table, node) tuples are unique ...
@@ -114,10 +118,10 @@ class SearchTree:
         begin_child = self.next_node[table] + block_offset * self.num_child
         self.start_child[table, node] = begin_child
         end_child = begin_child + self.num_child
+        # TODO: This is more complicated ...
+        actions, priors = self.calc_priors(logit)
 
-        action, prior = self.calc_priors(logit)
-
-        # self.prior[table, begin_child: end_child] = prior[:]
+        self.prior[table, begin_child: end_child] = priors[:]
 
         # Count multiplicity of tables, adjust self.next_node accordingly.
         value_counts = torch.bincount(table)

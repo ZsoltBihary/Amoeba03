@@ -22,7 +22,7 @@ class LeafBuffer:
         self.value = torch.zeros(self.size, dtype=torch.float32)
         self.is_terminal = torch.zeros(self.size, dtype=torch.bool)
 
-        self.multi = torch.zeros((self.size, action_size), dtype=torch.int32)
+        self.multi = torch.zeros(self.size, dtype=torch.int32)
         # self.batch_size = 0
         # self.batch_full = False
 
@@ -37,7 +37,7 @@ class LeafBuffer:
         self.player[self.next_idx: end_idx] = players
         self.position[self.next_idx: end_idx, :] = positions
         self.path[self.next_idx: end_idx, :] = paths
-        self.depth[self.next_idx: end_idx, :] = depths
+        self.depth[self.next_idx: end_idx] = depths
 
         self.next_idx = end_idx
         return
@@ -78,11 +78,12 @@ class LeafBuffer:
     def get_leaf_data(self):
         return (self.table[: self.next_idx],
                 self.node[: self.next_idx],
-                self.player[: self.next_idx],
-                self.position[: self.next_idx, :],
+                # self.player[: self.next_idx],
+                # self.position[: self.next_idx, :],
                 self.logit[: self.next_idx, :],
                 self.value[: self.next_idx],
-                self.is_terminal[: self.next_idx])
+                self.is_terminal[: self.next_idx],
+                self.multi[: self.next_idx])
 
     def get_path_data(self):
         # Truncate path tensors based on max depth ...
