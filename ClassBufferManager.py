@@ -8,9 +8,6 @@ class LeafBuffer:
 
         self.size = buffer_size
         self.next_idx = 0
-        # self.min_batch_size = min_batch_size
-        # self.action_size = action_size
-        # self.max_depth = max_depth
 
         self.table = torch.zeros(self.size, dtype=torch.long)
         self.node = torch.zeros(self.size, dtype=torch.long)
@@ -23,12 +20,9 @@ class LeafBuffer:
         self.is_terminal = torch.zeros(self.size, dtype=torch.bool)
 
         self.multi = torch.zeros(self.size, dtype=torch.int32)
-        # self.batch_size = 0
-        # self.batch_full = False
 
     def empty(self):
         self.next_idx = 0
-        # self.batch_size = 0
 
     def add_leaves(self, tables, nodes,  players, positions, paths, depths):
         end_idx = self.next_idx + tables.shape[0]
@@ -43,9 +37,9 @@ class LeafBuffer:
         return
 
     def get_states(self):
-        states = self.player[: self.next_idx] * self.position[: self.next_idx]
-        # self.batch_size = self.next_idx
-        # self.batch_full = True
+        # players = self.player[: self.next_idx].view(-1, 1)
+        # positions = self.position[: self.next_idx]
+        states = self.player[: self.next_idx].view(-1, 1) * self.position[: self.next_idx]
         return states
 
     def filter_unique(self):
@@ -71,7 +65,7 @@ class LeafBuffer:
 
     def add_eval_results(self, logits, values, are_terminal):
         self.logit[: self.next_idx, :] = logits
-        self.value[: self.next_idx] = values
+        self.value[: self.next_idx] = values * self.player[: self.next_idx]
         self.is_terminal[: self.next_idx] = are_terminal
         return
 
@@ -155,6 +149,19 @@ class ChildBuffer:
                 self.child[: self.next_idx],
                 self.parent_player[: self.next_idx])
 
+    def filter_unique(self):
+        tables, parents, children, players = self.get_data()
+        #  Combine data into a single tensor of shape (N, 4)
+        combined = torch.stack([tables, parents, children, players], dim=1)
+        uni_combined = torch.unique(combined, dim=0)
+        uni_tables = uni_combined[:, 0]
+        uni_parents = uni_combined[:, 1]
+        uni_children = uni_combined[:, 2]
+        uni_players = uni_combined[:, 3]
+        self.empty()
+        self.add(uni_tables, uni_parents, uni_children, uni_players)
+        return
+
 
 class BufferManager:
     def __init__(self, leaf_buffer_size, child_buffer_size, min_batch_size, action_size, max_depth):
@@ -184,14 +191,17 @@ class BufferManager:
         if self.leaf_collect.next_idx > self.min_batch_size:
             self.batch_full = True
 
-    def add_children(self, tables, parents, children, parent_players):
-        self.child_collect.add(tables, parents, children, parent_players)
+    def add_children(self, tables, parents, children, parent_players, collect):
+        if collect:
+            self.child_collect.add(tables, parents, children, parent_players)
+        else:
+            self.child_eval.add(tables, parents, children, parent_players)
 
     def get_states(self):
         return self.leaf_eval.get_states()
 
-    def add_eval_results(self, policies, values, are_terminal):
-        self.leaf_eval.add_eval_results(policies, values, are_terminal)
+    def add_eval_results(self, logits, values, are_terminal):
+        self.leaf_eval.add_eval_results(logits, values, are_terminal)
 
     def get_expand_data(self):
         return self.leaf_eval.get_leaf_data()
@@ -201,9 +211,13 @@ class BufferManager:
 
     def get_ucb_data(self):
         return self.child_eval.get_data()
-    
-    def swap_buffers(self):
+
+    def post_process(self):
         self.leaf_collect.filter_unique()
+        self.child_collect.filter_unique()
+        return
+
+    def swap_buffers(self):
         self.leaf_collect, self.leaf_eval = self.leaf_eval, self.leaf_collect
         self.leaf_collect.empty()
         self.child_collect, self.child_eval = self.child_eval, self.child_collect

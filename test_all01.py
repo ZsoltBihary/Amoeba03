@@ -41,7 +41,8 @@ model.eval()
 root_player = torch.ones(args.get('num_table'), dtype=torch.int32)
 root_player[1] = -1
 root_position = game.get_empty_positions(args.get('num_table'))
-root_position[1, 0] = 1
+root_position[0, 1] = -1
+root_position[1, 2] = 1
 
 engine = SearchEngine(args, game, terminal_check, model)
 

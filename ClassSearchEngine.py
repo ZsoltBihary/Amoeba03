@@ -80,7 +80,7 @@ class SearchEngine:
     def activate_agents(self):
         passive_agents = self.all_agents[~self.active]
         num_new = min(self.num_table, passive_agents.shape[0])
-        # TODO: This is just a proxy for now ...
+        # TODO: This is just a proxy for now ... max 1 agent / table
         new_tables = torch.arange(num_new)
         new_agents = passive_agents[: num_new]
         self.active[new_agents] = True
@@ -92,7 +92,7 @@ class SearchEngine:
         self.path[new_agents, 0] = 1
         return
 
-    def save_children(self, table, parent_node, child_node, parent_player):
+    def save_children(self, table, parent_node, child_node, parent_player, collect):
         # Step 1: Replicate table, parent_node and parent_player to 2d shape
         table_expanded = table.unsqueeze(1).repeat(1, self.num_child)
         parent_node_expanded = parent_node.unsqueeze(1).repeat(1, self.num_child)
@@ -102,7 +102,7 @@ class SearchEngine:
         parents = parent_node_expanded.flatten()
         children = child_node.flatten()
         players = parent_player_expanded.flatten()
-        self.buffer_mgr.add_children(tables, parents, children, players)
+        self.buffer_mgr.add_children(tables, parents, children, players, collect)
         return
 
     def update_agents(self):
@@ -112,15 +112,15 @@ class SearchEngine:
         # All agents hold nodes already expanded at this point ...
         agent, table, parent_node = self.get_active_indices()
         child_node = self.tree.get_children(table, parent_node)
-        # save all the child information to the child buffer, we will use this info to update ucb ...
-        self.save_children(table, parent_node, child_node, self.player[agent])
-        # find the best child node based on current ucb ...
+        # Save all the child information to the child buffer, we will use this info to update ucb ...
+        self.save_children(table, parent_node, child_node, self.player[agent], collect=True)
+        # Find the best child node based on current ucb ...
         ucb_tensor = self.tree.ucb[table.view(-1, 1), child_node]
         best_idx = torch.argmax(ucb_tensor, dim=1)
         new_node = child_node[torch.arange(best_idx.shape[0]), best_idx]
-        # lower ucb for best child to facilitate branching for consecutive paths ...
+        # Lower ucb for best child to facilitate branching for consecutive paths ...
         self.tree.ucb[table, new_node] -= 0.1
-
+        # Update agent attributes ...
         self.node[agent] = new_node
         self.depth[agent] += 1
         # TODO: Make this general, based on the Amoeba class ...
@@ -135,15 +135,20 @@ class SearchEngine:
             self.activate_agents()
             self.save_leaves()
             self.update_agents()
-        # TODO: post-process leaf buffer ...
+        # Post-process leaf buffer ...
+        self.buffer_mgr.post_process()
         return
 
-    @profile
-    def evaluate(self, players, positions):
-        states = players[:, None] * positions
+    def start_evaluation(self):
+        self.buffer_mgr.swap_buffers()
+        states = self.buffer_mgr.get_states()
         states_CUDA = states.to(device=self.CUDA_device, dtype=torch.float32, non_blocking=True)
+        term_indicator_CUDA = self.terminal_check(states_CUDA)
         result_CUDA = self.model(states_CUDA)
-        term_indicator = self.terminal_check(states_CUDA).to(device='cpu', non_blocking=False)
+        return term_indicator_CUDA, result_CUDA
+
+    def end_evaluation(self, term_indicator_CUDA, result_CUDA):
+        term_indicator = term_indicator_CUDA.to(device='cpu', non_blocking=False)
         logit = result_CUDA[0].to(device='cpu', non_blocking=False)
         value = result_CUDA[1].to(device='cpu', non_blocking=False)
         # Interpret result ...
@@ -156,16 +161,32 @@ class SearchEngine:
         value[draw_mask] = 0.0
         value[plus_mask] = 1.0
         value[minus_mask] = -1.0
-        value = players * value
+        # value = players * value
         terminal_mask = plus_mask | minus_mask | draw_mask
 
-        return terminal_mask, logit, value
+        self.buffer_mgr.add_eval_results(logit, value, terminal_mask)
+        return
+
+    def expand_tree(self):
+
+        return
 
     @profile
     def analyze(self, player, position):
-
         self.reset(player, position)
         self.collect_leaves()
+        while True:
+            # Send states to CUDA and start evaluation on GPU ...
+            term_indicator_CUDA, result_CUDA = self.start_evaluation()
+            # In the meantime, collect new leaf information ...
+            self.collect_leaves()
+            # Send CUDA results back to CPU, and process results ...
+            self.end_evaluation(term_indicator_CUDA, result_CUDA)
+            # Expand tree ...
+            self.expand_tree()
+
+            break
+
         return
 
         # self.root_expand()
@@ -237,3 +258,28 @@ class SearchEngine:
     #     self.ucb[parent_table, best_child_node] -= 0.1
     #
     #     return best_child_node
+
+    # @profile
+    # def evaluate(self, players, positions):
+    #     states = players[:, None] * positions
+    #     states_CUDA = states.to(device=self.CUDA_device, dtype=torch.float32, non_blocking=True)
+    #     result_CUDA = self.model(states_CUDA)
+    #     term_indicator_CUDA = self.terminal_check(states_CUDA)
+    #
+    #     term_indicator = term_indicator_CUDA.to(device='cpu', non_blocking=False)
+    #     logit = result_CUDA[0].to(device='cpu', non_blocking=False)
+    #     value = result_CUDA[1].to(device='cpu', non_blocking=False)
+    #     # Interpret result ...
+    #     dir_max = term_indicator[:, 0]
+    #     dir_min = term_indicator[:, 1]
+    #     sum_abs = term_indicator[:, 2]
+    #     plus_mask = (dir_max + 0.1 > self.game.win_length)
+    #     minus_mask = (dir_min - 0.1 < -self.game.win_length)
+    #     draw_mask = (sum_abs + 0.1 > self.action_size)
+    #     value[draw_mask] = 0.0
+    #     value[plus_mask] = 1.0
+    #     value[minus_mask] = -1.0
+    #     value = players * value
+    #     terminal_mask = plus_mask | minus_mask | draw_mask
+    #
+    #     return terminal_mask, logit, value
