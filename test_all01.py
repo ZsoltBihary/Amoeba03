@@ -11,19 +11,19 @@ from ClassSearchEngine import SearchEngine
 
 # Collect parameters in a dictionary
 args = {
-    'board_size': 6,
+    'board_size': 15,
     'win_length': 5,
     'CUDA_device': 'cuda' if torch.cuda.is_available() else 'cpu',
     # 'CUDA_device': 'cpu',
     # 'num_leaf': 8,
     # 'num_branch': 2,
-    'num_MC': 200,
-    'num_child': 5,
-    'num_table': 2,
-    'num_agent': 6,
+    'num_MC': 100,
+    'num_child': 30,
+    'num_table': 50,
+    'num_agent': 300,
     # 'num_moves': 5,
-    'leaf_buffer_size': 32,
-    'eval_batch_size': 16
+    'leaf_buffer_size': 600,
+    'eval_batch_size': 200
     # 'res_channels': 32,
     # 'hid_channels': 16,
     # 'num_res': 4,
@@ -47,5 +47,7 @@ root_position[1, 2] = 1
 engine = SearchEngine(args, game, terminal_check, model)
 
 engine.analyze(root_player, root_position)
+
+print(engine.tree.next_node)
 
 a = 42

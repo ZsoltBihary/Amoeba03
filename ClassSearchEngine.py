@@ -23,7 +23,8 @@ class SearchEngine:
         self.num_child = args.get('num_child')
         self.num_MC = args.get('num_MC')
         self.num_agent = args.get('num_agent')
-        self.num_node = (self.num_MC + 100) * self.num_child
+        # self.num_node = 100
+        self.num_node = (self.num_MC * 10 + 100) * self.num_child
         self.action_size = game.action_size
         self.max_depth = game.action_size + 1
         self.CUDA_device = args.get('CUDA_device')
@@ -58,11 +59,13 @@ class SearchEngine:
         self.active[:] = False
         return
 
+    @profile
     def get_active_indices(self):
         return (self.all_agents[self.active],
                 self.table[self.active],
                 self.node[self.active])
 
+    @profile
     def save_leaves(self):
         agent, table, node = self.get_active_indices()
         leaf_agent = agent[self.tree.is_leaf[table, node]]
@@ -77,6 +80,7 @@ class SearchEngine:
             self.active[leaf_agent] = False
         return
 
+    @profile
     def activate_agents(self):
         passive_agents = self.all_agents[~self.active]
         num_new = min(self.num_table, passive_agents.shape[0])
@@ -86,12 +90,14 @@ class SearchEngine:
         self.active[new_agents] = True
         self.table[new_agents] = new_tables
         self.node[new_agents] = 1
-        self.depth[new_agents] = 0
+
         self.player[new_agents] = self.root_player[new_tables]
         self.position[new_agents, :] = self.root_position[new_tables, :]
         self.path[new_agents, 0] = 1
+        self.depth[new_agents] = 1
         return
 
+    @profile
     def save_children(self, table, parent_node, child_node, parent_player, collect):
         # Step 1: Replicate table, parent_node and parent_player to 2d shape
         table_expanded = table.unsqueeze(1).repeat(1, self.num_child)
@@ -105,6 +111,7 @@ class SearchEngine:
         self.buffer_mgr.add_children(tables, parents, children, players, collect)
         return
 
+    @profile
     def update_agents(self):
         if not self.active.any():
             # print('No active agents ...')
@@ -122,14 +129,16 @@ class SearchEngine:
         self.tree.ucb[table, new_node] -= 0.1
         # Update agent attributes ...
         self.node[agent] = new_node
-        self.depth[agent] += 1
+
         # TODO: Make this general, based on the Amoeba class ...
         new_action = self.tree.action[table, new_node]
         self.position[agent, new_action] = self.player[agent]
         self.player[agent] *= -1
         self.path[agent, self.depth[agent]] = new_node
+        self.depth[agent] += 1
         return
 
+    @profile
     def collect_leaves(self):
         while not self.buffer_mgr.batch_full:
             self.activate_agents()
@@ -139,6 +148,7 @@ class SearchEngine:
         self.buffer_mgr.post_process()
         return
 
+    @profile
     def start_evaluation(self):
         self.buffer_mgr.swap_buffers()
         states = self.buffer_mgr.get_states()
@@ -147,6 +157,7 @@ class SearchEngine:
         result_CUDA = self.model(states_CUDA)
         return term_indicator_CUDA, result_CUDA
 
+    @profile
     def end_evaluation(self, term_indicator_CUDA, result_CUDA):
         term_indicator = term_indicator_CUDA.to(device='cpu', non_blocking=False)
         logit = result_CUDA[0].to(device='cpu', non_blocking=False)
@@ -167,7 +178,42 @@ class SearchEngine:
         self.buffer_mgr.add_eval_results(logit, value, terminal_mask)
         return
 
+    @profile
     def expand_tree(self):
+        # ***** These are modified within expand_tree
+        #       tree.is_terminal
+        #       tree.next_node
+        #       tree.is_leaf
+        #       tree.start_child
+        #       tree.action
+        #       tree.prior
+        table, node, player, logit, is_term = self.buffer_mgr.get_expand_data()
+        self.tree.is_terminal[table, node] = is_term
+        # Only expand non-terminal leaves ...
+        to_expand = ~is_term
+        exp_table, exp_node = table[to_expand], node[to_expand]
+        exp_player, exp_logit = player[to_expand], logit[to_expand]
+        exp_children = self.tree.expand(table[to_expand], node[to_expand], logit[to_expand])
+        # Save leaf_children data to the EVAL children buffer ...
+        self.save_children(exp_table, exp_node, exp_children, exp_player, False)
+        return
+
+    @profile
+    def back_propagate(self):
+        # ***** These are modified within propagation
+        #       tree.count
+        #       tree.value_sum
+        #       tree.value
+        table, node, value, multi = self.buffer_mgr.get_propagate_data()
+        self.tree.back_propagate(table, node, value, multi)
+        return
+
+    @profile
+    def update_ucb(self):
+        # ***** This is modified within ucb update
+        #       tree.ucb
+        table, parent, child, parent_player = self.buffer_mgr.get_ucb_data()
+        self.tree.update_ucb(table, parent, child, parent_player)
 
         return
 
@@ -175,111 +221,17 @@ class SearchEngine:
     def analyze(self, player, position):
         self.reset(player, position)
         self.collect_leaves()
-        while True:
+        for i_MC in range(self.num_MC):
             # Send states to CUDA and start evaluation on GPU ...
             term_indicator_CUDA, result_CUDA = self.start_evaluation()
             # In the meantime, collect new leaf information ...
             self.collect_leaves()
             # Send CUDA results back to CPU, and process results ...
             self.end_evaluation(term_indicator_CUDA, result_CUDA)
-            # Expand tree ...
+
             self.expand_tree()
+            self.back_propagate()
+            self.update_ucb()
 
-            break
-
+            print(i_MC)
         return
-
-        # self.root_expand()
-        # for i_MC in range(self.num_MC):
-        #     # print('i_MC = ', i_MC)
-        #     # self.i_leaf = 0
-        #     # self.search_leaves(0, 1, player, position)
-        #     self.search_leaves(0, self.num_leaf, 0, 1, player, position)
-        #     self.update_tree()
-        #     self.back_propagate()
-        #
-        # root_idx = 1
-        # root_value = self.tree['value'][root_idx]
-        # start_idx = self.tree['start_child_idx'][root_idx].item()
-        # end_idx = start_idx + self.tree['num_child'][root_idx].item()
-        # root_children_idx = torch.arange(start_idx, end_idx)
-        # children_actions = self.tree['action'][root_children_idx]
-        # action_count = torch.zeros(self.action_size, dtype=torch.int32)
-        # action_count[children_actions] = self.tree['count'][root_children_idx]
-        # action_weight = action_count.to(dtype=torch.float32)
-        # action_policy = action_weight / torch.sum(action_weight)
-        #
-        # # action_value = torch.zeros(self.action_size, dtype=torch.float32)
-        # # action_value[children_actions] = self.tree['value'][root_children_idx]
-        # # self.game.print_board(position)
-        # # print('move count: \n', action_count.view(self.game.board_size, -1))
-        # # print('move weight: \n', action_weight.view(self.game.board_size, -1))
-        # print('move logit: \n', action_policy.view(self.game.board_size, -1))
-        # return action_policy, root_value
-
-    # @profile
-    # def search_one_step(self):
-    #     # save leaves if any have been found (and deactivate agents that found leaves) ...
-    #     self.save_leaves()
-    #     # activate new agents to start new paths ...
-    #     self.activate_agents()
-    #     # get active indexes ...
-    #     all_agents, table, node = self.get_active_indices()
-    #     # find the best child node (and save all children involved) ...
-    #     best_node = self.explore_children(table, node)
-    #     # update state of the search agents
-    #     self.update_agents(all_agents, table, best_node)
-
-    # def root_expand(self):
-    #     # evaluate
-    #     terminal_mask, logit, value = self.evaluate(self.root_player, self.root_position)
-    #     # expand
-    #     table = torch.arange(self.num_table)
-    #     node = self.next_node[table]
-    #     self.expand(table, node, self.root_player, self.root_position, logit, value)
-    #
-    #     return
-
-    # def explore_children(self, all_agents, parent_table, parent_node):
-    #     # get the child node indexes on the parent tables ...
-    #     child_table, child_node = self.tree.get_children(parent_table, parent_node)
-    #     #
-    #     # child_table = parent_table.unsqueeze(1).repeat(1, self.num_child)
-    #     # # add the start index to the offsets to get the actual indices ... relying on broadcasting here ...
-    #     # start_node = self.start_child[parent_table, parent_node].reshape(-1, 1)
-    #     # node_offset = torch.arange(self.num_child, dtype=torch.long).reshape(1, -1)
-    #     # child_node = start_node + node_offset
-    #     # save all the child information to the child buffer, we will use this info to update ucb ...
-    #     self.save_children(child_table, parent_node, child_node, self.player[parent_table, parent_node])
-    #     # find the best child node based on current ucb ...
-    #     best_idx = torch.argmax(self.ucb[child_table, child_node], dim=1)
-    #     best_child_node = child_node[torch.arange(best_idx.shape[0]), best_idx]
-    #     # lower ucb for best child to facilitate branching for consecutive paths ...
-    #     self.ucb[parent_table, best_child_node] -= 0.1
-    #
-    #     return best_child_node
-
-    # @profile
-    # def evaluate(self, players, positions):
-    #     states = players[:, None] * positions
-    #     states_CUDA = states.to(device=self.CUDA_device, dtype=torch.float32, non_blocking=True)
-    #     result_CUDA = self.model(states_CUDA)
-    #     term_indicator_CUDA = self.terminal_check(states_CUDA)
-    #
-    #     term_indicator = term_indicator_CUDA.to(device='cpu', non_blocking=False)
-    #     logit = result_CUDA[0].to(device='cpu', non_blocking=False)
-    #     value = result_CUDA[1].to(device='cpu', non_blocking=False)
-    #     # Interpret result ...
-    #     dir_max = term_indicator[:, 0]
-    #     dir_min = term_indicator[:, 1]
-    #     sum_abs = term_indicator[:, 2]
-    #     plus_mask = (dir_max + 0.1 > self.game.win_length)
-    #     minus_mask = (dir_min - 0.1 < -self.game.win_length)
-    #     draw_mask = (sum_abs + 0.1 > self.action_size)
-    #     value[draw_mask] = 0.0
-    #     value[plus_mask] = 1.0
-    #     value[minus_mask] = -1.0
-    #     value = players * value
-    #     terminal_mask = plus_mask | minus_mask | draw_mask
-    #
-    #     return terminal_mask, logit, value

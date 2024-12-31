@@ -31,7 +31,7 @@ class SearchTree:
         self.next_node[:] = 2
         self.is_leaf[:, :] = True
         # TODO: just for testing ... begin
-        self.is_leaf[:, 1] = False
+        # self.is_leaf[:, 1] = False
         # TODO: just for testing ... end
         self.is_terminal[:, :] = False
         # self.player[:, :] = 0
@@ -55,77 +55,52 @@ class SearchTree:
         # return child_table, child_node, node_offset
         return child_node
 
+    def calc_priors(self, logit):
+        top_values, top_actions = torch.topk(logit, self.num_child, dim=1)
+        top_prior = torch.softmax(top_values, dim=1)
+        return top_actions, top_prior
+
+    def expand(self, table, parent, logit):
+        # ***** These are modified within expand
+        #       self.next_node
+        #       self.is_leaf
+        #       self.start_child
+        #       self.action
+        #       self.prior
+        # Here we assume that (table, node) tuples are unique ...
+        # We also assume that the nodes are not terminal, so we expand all in the list ...
+        # Deal with the parents ...
+        self.is_leaf[table, parent] = False
+        block_offset = duplicate_indices(table)
+        begin_child = self.next_node[table] + block_offset * self.num_child
+        self.start_child[table, parent] = begin_child
+        # Deal with the children ...
+        children = self.get_children(table, parent)
+        actions, priors = self.calc_priors(logit)
+        self.action[table.view(-1, 1), children] = actions
+        self.prior[table.view(-1, 1), children] = priors
+        # Count multiplicity of tables, adjust self.next_node accordingly ...
+        value_counts = torch.bincount(table)
+        table_count = value_counts[table]
+        self.next_node[table] += self.num_child * table_count[table]
+        # Return children as we need them for ucb update ...
+        return children
+
+    def back_propagate(self, table, node, value, multi):
+        # TODO: ***** These are modified within propagation
+        #       self.count[:, :]
+        #       self.value_sum[:, :]
+        #       self.value[:, :]
+        self.count.index_put_((table, node), multi, accumulate=True)
+        self.value_sum.index_put_((table, node), multi * value, accumulate=True)
+        self.value[table, node] = self.value_sum[table, node] / self.count[table, node]
+        return
+
     def update_ucb(self, table, parent, child, parent_player):
-        # table, parent, child, parent_player = self.child_buffer.get_data()
-        # Is this so simple? Perhaps we need to keep fresh results ...
         child_q = self.value[table, child]
         child_prior = self.prior[table, child]
         parent_count = self.count[table, parent]
         child_count = self.count[table, child]
         self.ucb[table, child] = (parent_player * child_q +
                                   2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1))
-        return
-
-    def update_tree(self):
-
-        # # EXPAND
-        # # TODO:
-        # (table,
-        #  node,
-        #  player,
-        #  position,
-        #  logit,
-        #  value,
-        #  is_terminal) = self.leaf_buffer.get_eval_data()
-        # # select unique leaves ...
-        #
-        # combined = torch.stack([table, node], dim=1)  # Shape: (N, 2)
-        # uni_combined, uni_indices = unique(combined, dim=0)
-        # uni_table = uni_combined[:, 0]
-        # uni_node = uni_combined[:, 1]
-        # # Use these indices to select unique values, etc.
-        # uni_player = player[uni_indices]
-        # uni_policy = logit[uni_indices, :]
-        # uni_value = value[uni_indices]
-        # uni_is_terminal = is_terminal[uni_indices]
-        #
-        # self.value[uni_table, uni_node] = uni_value
-        # self.is_terminal[uni_table, uni_node] = uni_is_terminal
-        #
-        # block_offset = duplicate_indices(uni_table)
-        # self.start_child[uni_table, uni_node] = self.next_node[uni_table] + block_offset * self.num_child
-        #
-        # # # UPDATE counts and values in the trees ...
-        # # # Scatter-add to handle repeated indices
-        # # # Prepare the indices
-        # # indices = torch.stack([tables, nodes], dim=0)  # Shape (2, 10)
-        # # # Perform scatter-add
-        # # self.value_sum.scatter_add_(0, indices, values)
-        #
-        # # UPDATE ucb in the trees ...
-        # self.update_ucb()
-        return
-
-    def calc_priors(self, logit):
-        top_values, top_actions = torch.topk(logit, self.num_child, dim=1)
-        top_prior = torch.softmax(top_values, dim=1)
-        return top_actions, top_prior
-
-    def expand(self, table, node, player, position, logit, value):
-        # Here we assume that (table, node) tuples are unique ...
-        # We also assume that the nodes are not terminal, so we expand all in the list ...
-        block_offset = duplicate_indices(table)
-        begin_child = self.next_node[table] + block_offset * self.num_child
-        self.start_child[table, node] = begin_child
-        end_child = begin_child + self.num_child
-        # TODO: This is more complicated ...
-        actions, priors = self.calc_priors(logit)
-
-        self.prior[table, begin_child: end_child] = priors[:]
-
-        # Count multiplicity of tables, adjust self.next_node accordingly.
-        value_counts = torch.bincount(table)
-        table_count = value_counts[table]
-        self.next_node[table] += self.num_child * table_count[table]
-
         return

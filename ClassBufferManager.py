@@ -1,11 +1,10 @@
 import torch
 from helper_functions import unique  # , duplicate_indices
-# from line_profiler_pycharm import profile
+from line_profiler_pycharm import profile
 
 
 class LeafBuffer:
     def __init__(self, buffer_size, action_size, max_depth):
-
         self.size = buffer_size
         self.next_idx = 0
 
@@ -24,7 +23,7 @@ class LeafBuffer:
     def empty(self):
         self.next_idx = 0
 
-    def add_leaves(self, tables, nodes,  players, positions, paths, depths):
+    def add_leaves(self, tables, nodes, players, positions, paths, depths):
         end_idx = self.next_idx + tables.shape[0]
         self.table[self.next_idx: end_idx] = tables
         self.node[self.next_idx: end_idx] = nodes
@@ -42,6 +41,7 @@ class LeafBuffer:
         states = self.player[: self.next_idx].view(-1, 1) * self.position[: self.next_idx]
         return states
 
+    @profile
     def filter_unique(self):
         tables = self.table[: self.next_idx]
         nodes = self.node[: self.next_idx]
@@ -72,25 +72,26 @@ class LeafBuffer:
     def get_leaf_data(self):
         return (self.table[: self.next_idx],
                 self.node[: self.next_idx],
-                # self.player[: self.next_idx],
+                self.player[: self.next_idx],
                 # self.position[: self.next_idx, :],
                 self.logit[: self.next_idx, :],
-                self.value[: self.next_idx],
-                self.is_terminal[: self.next_idx],
-                self.multi[: self.next_idx])
+                # self.value[: self.next_idx],
+                self.is_terminal[: self.next_idx])
+        # self.multi[: self.next_idx])
 
     def get_path_data(self):
         # Truncate path tensors based on max depth ...
         maximal_depth = torch.max(self.depth[: self.next_idx])
-        paths = self.path[:, :maximal_depth]
+        paths = self.path[: self.next_idx, :maximal_depth]
         # Flatten the path tensor to get nodes
         nodes = paths.flatten()
-        # Repeat the table and value tensors
+        # Repeat the table, value and multi tensors
         tables = self.table[: self.next_idx].repeat_interleave(maximal_depth)
         values = self.value[: self.next_idx].repeat_interleave(maximal_depth)
+        multis = self.multi[: self.next_idx].repeat_interleave(maximal_depth)
         # Filter out zero nodes
-        node_filter = (nodes == 0)
-        return tables[node_filter], nodes[node_filter], values[node_filter]
+        node_filter = (nodes > 0)
+        return tables[node_filter], nodes[node_filter], values[node_filter], multis[node_filter]
 
 
 class ChildBuffer:
@@ -149,6 +150,7 @@ class ChildBuffer:
                 self.child[: self.next_idx],
                 self.parent_player[: self.next_idx])
 
+    @profile
     def filter_unique(self):
         tables, parents, children, players = self.get_data()
         #  Combine data into a single tensor of shape (N, 4)
@@ -171,12 +173,11 @@ class BufferManager:
         self.min_batch_size = min_batch_size
         self.action_size = action_size
         self.max_depth = max_depth
-            
+
         self.leaf_collect = LeafBuffer(leaf_buffer_size, action_size, max_depth)
         self.leaf_eval = LeafBuffer(leaf_buffer_size, action_size, max_depth)
         self.child_collect = ChildBuffer(child_buffer_size)
         self.child_eval = ChildBuffer(child_buffer_size)
-
         self.batch_full = False
 
     def reset(self):
@@ -186,8 +187,8 @@ class BufferManager:
         self.child_eval.empty()
         self.batch_full = False
 
-    def add_leaves(self, tables, nodes,  players, positions, paths, depths):
-        self.leaf_collect.add_leaves(tables, nodes,  players, positions, paths, depths)
+    def add_leaves(self, tables, nodes, players, positions, paths, depths):
+        self.leaf_collect.add_leaves(tables, nodes, players, positions, paths, depths)
         if self.leaf_collect.next_idx > self.min_batch_size:
             self.batch_full = True
 
@@ -212,6 +213,7 @@ class BufferManager:
     def get_ucb_data(self):
         return self.child_eval.get_data()
 
+    @profile
     def post_process(self):
         self.leaf_collect.filter_unique()
         self.child_collect.filter_unique()
@@ -222,3 +224,4 @@ class BufferManager:
         self.leaf_collect.empty()
         self.child_collect, self.child_eval = self.child_eval, self.child_collect
         self.child_collect.empty()
+        self.batch_full = False
