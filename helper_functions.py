@@ -1,6 +1,8 @@
 import torch
+from line_profiler_pycharm import profile
 
 
+@profile
 def unique(x, dim=None):
     """Unique elements of x and indices of those unique elements
     https://github.com/pytorch/pytorch/issues/36748#issuecomment-619514810
@@ -66,6 +68,7 @@ if __name__ == "__main__":
     print(unique_values)
 
 
+@profile
 def duplicate_indices(tables: torch.Tensor) -> torch.Tensor:
     """
     Assigns incrementing indices (marks) for duplicate entries in the input tensor.

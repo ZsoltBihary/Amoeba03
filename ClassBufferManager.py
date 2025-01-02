@@ -216,7 +216,7 @@ class BufferManager:
     @profile
     def post_process(self):
         self.leaf_collect.filter_unique()
-        self.child_collect.filter_unique()
+        # self.child_collect.filter_unique()
         return
 
     def swap_buffers(self):

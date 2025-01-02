@@ -1,12 +1,10 @@
 import torch
-# Create a tensor
-x = torch.zeros(5, 5, dtype=torch.long)
 
-# Indices to update (with duplicates)
-indices = (torch.tensor([0, 1, 1]), torch.tensor([1, 3, 3]))
-values = torch.tensor([10, 20, 30])
+# Example where 4 is missing in the table
+table = torch.tensor([0, 1, 2, 3, 1, 2, 2, 3, 0], dtype=torch.long)
 
-# Use index_put_ with accumulate=True
-x.index_put_(indices, values, accumulate=True)
+# Use torch.bincount
+count = torch.bincount(table, minlength=5)  # Ensures output has length 5
 
-print("After index_put_ with accumulate=True:\n", x)
+print("Input table:", table)
+print("Count tensor:", count)

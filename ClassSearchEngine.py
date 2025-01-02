@@ -24,13 +24,13 @@ class SearchEngine:
         self.num_MC = args.get('num_MC')
         self.num_agent = args.get('num_agent')
         # self.num_node = 100
-        self.num_node = (self.num_MC * 10 + 100) * self.num_child
+        self.num_node = (self.num_MC + 20) * self.num_child
         self.action_size = game.action_size
         self.max_depth = game.action_size + 1
         self.CUDA_device = args.get('CUDA_device')
         # Set up buffer manager
         self.buffer_mgr = BufferManager(leaf_buffer_size=args.get('leaf_buffer_size'),
-                                        child_buffer_size=args.get('leaf_buffer_size') * self.num_child * 10,
+                                        child_buffer_size=args.get('leaf_buffer_size') * self.num_child * 2,
                                         min_batch_size=args.get('eval_batch_size'),
                                         action_size=self.action_size,
                                         max_depth=self.max_depth)
@@ -50,6 +50,8 @@ class SearchEngine:
         self.player = torch.zeros(self.num_agent, dtype=torch.int32)
         self.position = torch.zeros((self.num_agent, self.action_size), dtype=torch.int32)
         self.path = torch.zeros((self.num_agent, self.max_depth), dtype=torch.long)
+        # Set up helper attributes
+        self.table_order = torch.zeros(self.num_table, dtype=torch.long)
 
     def reset(self, root_player, root_position):
         self.buffer_mgr.reset()
@@ -57,6 +59,7 @@ class SearchEngine:
         self.root_player[:] = root_player
         self.root_position[:, :] = root_position
         self.active[:] = False
+        self.table_order = torch.arange(self.num_table)
         return
 
     @profile
@@ -85,7 +88,7 @@ class SearchEngine:
         passive_agents = self.all_agents[~self.active]
         num_new = min(self.num_table, passive_agents.shape[0])
         # TODO: This is just a proxy for now ... max 1 agent / table
-        new_tables = torch.arange(num_new)
+        new_tables = self.table_order[: num_new]
         new_agents = passive_agents[: num_new]
         self.active[new_agents] = True
         self.table[new_agents] = new_tables
@@ -140,6 +143,7 @@ class SearchEngine:
 
     @profile
     def collect_leaves(self):
+        self.table_order[:] = torch.argsort(self.tree.count[:, 1])
         while not self.buffer_mgr.batch_full:
             self.activate_agents()
             self.save_leaves()
@@ -221,17 +225,21 @@ class SearchEngine:
     def analyze(self, player, position):
         self.reset(player, position)
         self.collect_leaves()
-        for i_MC in range(self.num_MC):
+        while True:
             # Send states to CUDA and start evaluation on GPU ...
             term_indicator_CUDA, result_CUDA = self.start_evaluation()
             # In the meantime, collect new leaf information ...
             self.collect_leaves()
             # Send CUDA results back to CPU, and process results ...
             self.end_evaluation(term_indicator_CUDA, result_CUDA)
-
+            # Update search tree ...
             self.expand_tree()
             self.back_propagate()
             self.update_ucb()
 
-            print(i_MC)
+            min_MC = torch.min(self.tree.count[:, 1])
+            print(min_MC.item())
+            if min_MC > self.num_MC:
+                break
+
         return

@@ -4,7 +4,7 @@ import torch
 # from typing import Tuple
 # from ClassBufferManager import BufferManager
 from helper_functions import duplicate_indices
-# from line_profiler_pycharm import profile
+from line_profiler_pycharm import profile
 
 
 class SearchTree:
@@ -13,21 +13,22 @@ class SearchTree:
         self.num_child = num_child
         self.num_node = num_node
         # Set up tree attributes
-        self.next_node = 2 * torch.ones(self.num_table, dtype=torch.long)
-        self.is_leaf = torch.ones((self.num_table, self.num_node), dtype=torch.bool)
+        # self.next_node = 2 * torch.ones(self.num_table, dtype=torch.long)
+        self.next_node = torch.zeros(self.num_table, dtype=torch.long)
+        self.is_leaf = torch.zeros((self.num_table, self.num_node), dtype=torch.bool)
         self.is_terminal = torch.zeros((self.num_table, self.num_node), dtype=torch.bool)
         # self.player = torch.ones((self.num_table, self.num_node), dtype=torch.int32)
         self.count = torch.zeros((self.num_table, self.num_node), dtype=torch.int32)
         self.value_sum = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
         self.value = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
-        self.start_child = 2 * torch.ones((self.num_table, self.num_node), dtype=torch.long)
+        self.start_child = torch.zeros((self.num_table, self.num_node), dtype=torch.long)
         # self.parent = torch.ones((self.num_table, self.num_node), dtype=torch.long)
         self.action = torch.zeros((self.num_table, self.num_node), dtype=torch.long)
         self.prior = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
-        self.ucb = -99999.9 * torch.ones((self.num_table, self.num_node), dtype=torch.float32)
-        # self.search_count = torch.zeros(self.num_table, dtype=torch.int32)
+        self.ucb = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
 
     def reset(self):
+        # self.next_node[:] = 2
         self.next_node[:] = 2
         self.is_leaf[:, :] = True
         # TODO: just for testing ... begin
@@ -37,13 +38,13 @@ class SearchTree:
         # self.player[:, :] = 0
         self.count[:, :] = 0
         self.value_sum[:, :] = 0.0
-        self.value[:, :] = 0.0
-        self.start_child[:, :] = 2
+        # self.value[:, :] = 0.0
+        # self.start_child[:, :] = 2
+        # self.start_child[:, :] = 0
         # self.parent[:, :] = 1
-        self.action[:, :] = 0
-        self.prior[:, :] = 0
-        self.ucb[:, :] = -99999.9
-        # self.search_count[:] = 0
+        # self.action[:, :] = 0
+        # self.prior[:, :] = 0.0
+        # self.ucb[:, :] = -9999.9
         return
 
     def get_children(self, parent_table, parent_node):
@@ -60,6 +61,7 @@ class SearchTree:
         top_prior = torch.softmax(top_values, dim=1)
         return top_actions, top_prior
 
+    @profile
     def expand(self, table, parent, logit):
         # ***** These are modified within expand
         #       self.next_node
@@ -80,9 +82,8 @@ class SearchTree:
         self.action[table.view(-1, 1), children] = actions
         self.prior[table.view(-1, 1), children] = priors
         # Count multiplicity of tables, adjust self.next_node accordingly ...
-        value_counts = torch.bincount(table)
-        table_count = value_counts[table]
-        self.next_node[table] += self.num_child * table_count[table]
+        table_count = torch.bincount(table, minlength=self.num_table)
+        self.next_node[:] += self.num_child * table_count[:]
         # Return children as we need them for ucb update ...
         return children
 
