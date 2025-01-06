@@ -27,6 +27,10 @@ class SearchTree:
         self.prior = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
         self.ucb = torch.zeros((self.num_table, self.num_node), dtype=torch.float32)
 
+    def __str__(self):
+        # User-friendly string representation
+        return f"MyClass(next_node={self.next_node.tolist()}, start_child={self.start_child[:, :20].tolist()})"
+
     def reset(self):
         # self.next_node[:] = 2
         self.next_node[:] = 2
@@ -102,6 +106,25 @@ class SearchTree:
         child_prior = self.prior[table, child]
         parent_count = self.count[table, parent]
         child_count = self.count[table, child]
-        self.ucb[table, child] = (parent_player * child_q +
-                                  2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1))
+        # self.ucb[table, child] = (parent_player * child_q +
+        #                           2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1))
+        #
+        # ucb_value = (parent_player * child_q +
+        #                           2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1))
+
+        # # Calculate UCB normally
+        # ucb_values = (parent_player * child_q +
+        #               2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1))
+        #
+        # # Assign a very low value where child_prior < 0.001
+        # self.ucb[table, child] = torch.where(child_prior < 0.001,
+        #                                      -9999.9,
+        #                                      ucb_values)
+
+        # Assign a very low value where child_prior < 0.001
+        self.ucb[table, child] = torch.where(child_prior < 0.001,
+                                             -9999.9,
+                                             (parent_player * child_q +
+                                              2.0 * child_prior * torch.sqrt(parent_count + 1) / (child_count + 1)))
+
         return

@@ -106,12 +106,19 @@ class SimpleModel01(nn.Module):
         #
         # value_minus_par = [-10.0, -1.267, -0.668, -0.343, -0.141, -0.019]
 
-        policy_logit_par = [15.0, 7.225, 1.609, 0.670, 0.393,
-                            0.001,
-                            0.356, 0.888, 2.492, 10.039, 15.0]
-        value_plus_par = [0.004, 0.152, 0.288, 0.654, 3.848, 10.0]
+        policy_logit_par = [15.0, 7.225, 1.609, 0.630, 0.313,
+                            -0.041,
+                            0.276, 0.848, 2.492, 100.039, 15.0]
+        value_plus_par = [0.034, 0.152, 0.288, 0.654, 3.848, 10.0]
 
-        value_minus_par = [-10.0, -1.267, -0.668, -0.343, -0.141, -0.009]
+        value_minus_par = [-10.0, -1.267, -0.668, -0.343, -0.141, -0.019]
+
+        # policy_logit_par = [15.0, 7.225, 1.609, 0.670, 0.393,
+        #                     0.001,
+        #                     0.356, 0.888, 2.492, 10.039, 15.0]
+        # value_plus_par = [0.004, 0.152, 0.288, 0.654, 3.848, 10.0]
+        #
+        # value_minus_par = [-10.0, -1.267, -0.668, -0.343, -0.141, -0.009]
 
         # policy_logit_tensor = torch.tensor(policy_logit_par, dtype=torch.float32) * 0.2
         policy_logit_tensor = torch.tensor(policy_logit_par, dtype=torch.float32)
@@ -142,7 +149,7 @@ class SimpleModel01(nn.Module):
         x_minus = x[:, 0:6, ...]
         x_plus = x[:, 5:11, ...]
         # b_size = x.shape[0]
-        policy_logit = torch.einsum('bfi,f->bi', x, self.policy_logit_w) + 1000.0 * state_zero - 1000.0
+        policy_logit = torch.einsum('bfi,f->bi', x, self.policy_logit_w) + 10000.0 * state_zero - 10000.0
         # flat_policy_logit = policy_logit.reshape((b_size, -1))
 
         policy = torch.softmax(policy_logit, dim=1) * state_zero
@@ -286,7 +293,7 @@ class TrivialModel02(nn.Module):
         x = state_CUDA.view(state_CUDA.shape[0], 1, self.board_size, self.board_size)
         sum_abs_x = self.sum_conv(torch.abs(x)+0.2)
         # logit head
-        logit = sum_abs_x.reshape(sum_abs_x.shape[0], -1)
+        logit = 0.1 * sum_abs_x.reshape(sum_abs_x.shape[0], -1) - 99.9 * torch.abs(state_CUDA)
         # value head
         value = torch.sum(state_CUDA, dim=1) * 0.0
         return logit, value
@@ -301,7 +308,7 @@ class TrivialModel01(nn.Module):
     @profile
     def forward(self, state_CUDA):
         # # logit head
-        logit = state_CUDA * 0.0
+        logit = -99.9 * torch.abs(state_CUDA)
         # value head
         # value = torch.sum(state_CUDA, dim=1) * 0.05 + 0.02
         value = torch.sum(state_CUDA, dim=1) * 0.0

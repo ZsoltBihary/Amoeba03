@@ -7,7 +7,7 @@ import torch
 
 
 class AgentManager:
-    # def __init__(self, args: dict, game: Amoeba, root_player, root_position):
+    # def __init__(self, args: dict, game: Amoeba, player, position):
     def __init__(self, num_agent, action_size, max_depth, buffer_mgr):
 
         self.num_agent = num_agent

@@ -23,11 +23,12 @@ class SearchEngine:
         self.num_child = args.get('num_child')
         self.num_MC = args.get('num_MC')
         self.num_agent = args.get('num_agent')
-        # self.num_node = 100
         self.num_node = (self.num_MC + 20) * self.num_child
         self.action_size = game.action_size
         self.max_depth = game.action_size + 1
         self.CUDA_device = args.get('CUDA_device')
+        # self.max_num_branch = args.get('num_branch')
+        # self.num_branch = 1
         # Set up buffer manager
         self.buffer_mgr = BufferManager(leaf_buffer_size=args.get('leaf_buffer_size'),
                                         child_buffer_size=args.get('leaf_buffer_size') * self.num_child * 2,
@@ -52,6 +53,9 @@ class SearchEngine:
         self.path = torch.zeros((self.num_agent, self.max_depth), dtype=torch.long)
         # Set up helper attributes
         self.table_order = torch.zeros(self.num_table, dtype=torch.long)
+        self.ucb_penalty = 0.02
+        # self.branch_penalty = 0.05
+        self.av_num_agent = 0.0
 
     def reset(self, root_player, root_position):
         self.buffer_mgr.reset()
@@ -60,6 +64,9 @@ class SearchEngine:
         self.root_position[:, :] = root_position
         self.active[:] = False
         self.table_order = torch.arange(self.num_table)
+        self.av_num_agent = 1.0
+        # num_legal = torch.sum(position == 0)
+        # self.num_branch = min(self.max_num_branch, num_legal.item())
         return
 
     @profile
@@ -114,6 +121,36 @@ class SearchEngine:
         self.buffer_mgr.add_children(tables, parents, children, players, collect)
         return
 
+    def split_agents(self, agent, table, child_node, depth_max):
+
+        passive_agent = self.all_agents[~self.active]
+        old_idx = torch.arange(agent.shape[0])[self.depth[agent] <= depth_max]
+        old_agent = agent[old_idx]
+        old_table = table[old_idx]
+        old_child_node = child_node[old_idx, :]
+        if passive_agent.shape[0] >= old_agent.shape[0]:
+            new_agent = passive_agent[: old_agent.shape[0]]
+            self.active[new_agent] = True
+            self.table[new_agent] = old_table
+
+            ucb_tensor = self.tree.ucb[old_table.view(-1, 1), old_child_node]
+            best_idx = torch.argmax(ucb_tensor, dim=1)
+            new_node2 = old_child_node[torch.arange(best_idx.shape[0]), best_idx]
+            # Lower ucb for best child to facilitate branching for consecutive paths ...
+            self.tree.ucb[old_table, new_node2] -= self.ucb_penalty
+
+            self.node[new_agent] = new_node2
+            # TODO: Make this general, based on the Amoeba class ...
+            new_action = self.tree.action[old_table, new_node2]
+            self.position[new_agent, :] = self.position[old_agent, :]
+            self.position[new_agent, new_action] = self.player[old_agent]
+            self.player[new_agent] = -self.player[old_agent]
+            self.path[new_agent, :] = self.path[old_agent, :]
+            self.path[new_agent, self.depth[old_agent]] = new_node2
+            self.depth[new_agent] = self.depth[old_agent] + 1
+
+        return
+
     @profile
     def update_agents(self):
         if not self.active.any():
@@ -121,6 +158,8 @@ class SearchEngine:
             return
         # All agents hold nodes already expanded at this point ...
         agent, table, parent_node = self.get_active_indices()
+        n_agent = agent.shape[0]
+        self.av_num_agent = self.av_num_agent * 0.9 + n_agent * 0.1
         child_node = self.tree.get_children(table, parent_node)
         # Save all the child information to the child buffer, we will use this info to update ucb ...
         self.save_children(table, parent_node, child_node, self.player[agent], collect=True)
@@ -129,13 +168,94 @@ class SearchEngine:
         best_idx = torch.argmax(ucb_tensor, dim=1)
         new_node = child_node[torch.arange(best_idx.shape[0]), best_idx]
         # Lower ucb for best child to facilitate branching for consecutive paths ...
-        self.tree.ucb[table, new_node] -= 0.1
-        # Update agent attributes ...
-        self.node[agent] = new_node
+        self.tree.ucb[table, new_node] -= self.ucb_penalty
 
+        # self.split_agents(agent, table, child_node, depth_max=2)
+        # self.split_agents(agent, table, child_node, depth_max=4)
+        # self.split_agents(agent, table, child_node, depth_max=6)
+        # self.split_agents(agent, table, child_node, depth_max=10)
+
+        # # Let us do some branching if num_table = 1 ...
+        # if self.num_table == 1:
+        #
+        #     passive_agent = self.all_agents[~self.active]
+        #     if passive_agent.shape[0] >= agent.shape[0]:
+        #         agent2 = passive_agent[: agent.shape[0]]
+        #         self.active[agent2] = True
+        #         self.table[agent2] = 0
+        #
+        #         ucb_tensor = self.tree.ucb[table.view(-1, 1), child_node]
+        #         best_idx = torch.argmax(ucb_tensor, dim=1)
+        #         new_node2 = child_node[torch.arange(best_idx.shape[0]), best_idx]
+        #         # Lower ucb for best child to facilitate branching for consecutive paths ...
+        #         self.tree.ucb[table, new_node2] -= self.branch_penalty
+        #
+        #         self.node[agent2] = new_node2
+        #         # TODO: Make this general, based on the Amoeba class ...
+        #         new_action = self.tree.action[table, new_node2]
+        #         self.position[agent2, :] = self.position[agent, :]
+        #         self.position[agent2, new_action] = self.player[agent]
+        #         self.player[agent2] = -self.player[agent]
+        #         self.path[agent2, :] = self.path[agent, :]
+        #         self.path[agent2, self.depth[agent]] = new_node2
+        #         self.depth[agent2] = self.depth[agent] + 1
+        #
+        #         passive_agent = self.all_agents[~self.active]
+        #         if passive_agent.shape[0] >= agent.shape[0]:
+        #             agent2 = passive_agent[: agent.shape[0]]
+        #             self.active[agent2] = True
+        #             self.table[agent2] = 0
+        #
+        #             ucb_tensor = self.tree.ucb[table.view(-1, 1), child_node]
+        #             best_idx = torch.argmax(ucb_tensor, dim=1)
+        #             new_node2 = child_node[torch.arange(best_idx.shape[0]), best_idx]
+        #             # Lower ucb for best child to facilitate branching for consecutive paths ...
+        #             self.tree.ucb[table, new_node2] -= self.branch_penalty
+        #
+        #             self.node[agent2] = new_node2
+        #             # TODO: Make this general, based on the Amoeba class ...
+        #             new_action = self.tree.action[table, new_node2]
+        #             self.position[agent2, :] = self.position[agent, :]
+        #             self.position[agent2, new_action] = self.player[agent]
+        #             self.player[agent2] = -self.player[agent]
+        #             self.path[agent2, :] = self.path[agent, :]
+        #             self.path[agent2, self.depth[agent]] = new_node2
+        #             self.depth[agent2] = self.depth[agent] + 1
+        #
+        #             passive_agent = self.all_agents[~self.active]
+        #             if passive_agent.shape[0] >= agent.shape[0]:
+        #                 agent2 = passive_agent[: agent.shape[0]]
+        #                 self.active[agent2] = True
+        #                 self.table[agent2] = 0
+        #
+        #                 ucb_tensor = self.tree.ucb[table.view(-1, 1), child_node]
+        #                 best_idx = torch.argmax(ucb_tensor, dim=1)
+        #                 new_node2 = child_node[torch.arange(best_idx.shape[0]), best_idx]
+        #                 # Lower ucb for best child to facilitate branching for consecutive paths ...
+        #                 self.tree.ucb[table, new_node2] -= self.ucb_penalty
+        #
+        #                 self.node[agent2] = new_node2
+        #                 # TODO: Make this general, based on the Amoeba class ...
+        #                 new_action = self.tree.action[table, new_node2]
+        #                 self.position[agent2, :] = self.position[agent, :]
+        #                 self.position[agent2, new_action] = self.player[agent]
+        #                 self.player[agent2] = -self.player[agent]
+        #                 self.path[agent2, :] = self.path[agent, :]
+        #                 self.path[agent2, self.depth[agent]] = new_node2
+        #                 self.depth[agent2] = self.depth[agent] + 1
+        #             else:
+        #                 self.tree.ucb[table, new_node2] += (self.branch_penalty - self.ucb_penalty)
+        #
+        #         else:
+        #             self.tree.ucb[table, new_node2] += (self.branch_penalty - self.ucb_penalty)
+
+        # Update agent attributes ...
+        # self.tree.ucb[table, new_node] += (self.branch_penalty - self.ucb_penalty)
+        self.node[agent] = new_node
         # TODO: Make this general, based on the Amoeba class ...
         new_action = self.tree.action[table, new_node]
         self.position[agent, new_action] = self.player[agent]
+        # TODO: What happens if this move happens to go beyond a terminal position?????
         self.player[agent] *= -1
         self.path[agent, self.depth[agent]] = new_node
         self.depth[agent] += 1
@@ -148,6 +268,7 @@ class SearchEngine:
             self.activate_agents()
             self.save_leaves()
             self.update_agents()
+            # TODO: Wait a minute ... What if we step beyond a terminal node??????
         # Post-process leaf buffer ...
         self.buffer_mgr.post_process()
         return
@@ -157,8 +278,9 @@ class SearchEngine:
         self.buffer_mgr.swap_buffers()
         states = self.buffer_mgr.get_states()
         states_CUDA = states.to(device=self.CUDA_device, dtype=torch.float32, non_blocking=True)
-        term_indicator_CUDA = self.terminal_check(states_CUDA)
-        result_CUDA = self.model(states_CUDA)
+        with torch.no_grad():
+            term_indicator_CUDA = self.terminal_check(states_CUDA)
+            result_CUDA = self.model(states_CUDA)
         return term_indicator_CUDA, result_CUDA
 
     @profile
@@ -166,6 +288,9 @@ class SearchEngine:
         term_indicator = term_indicator_CUDA.to(device='cpu', non_blocking=False)
         logit = result_CUDA[0].to(device='cpu', non_blocking=False)
         value = result_CUDA[1].to(device='cpu', non_blocking=False)
+        # term_indicator = term_indicator_CUDA.to(device='cpu', non_blocking=True)
+        # logit = result_CUDA[0].to(device='cpu', non_blocking=True)
+        # value = result_CUDA[1].to(device='cpu', non_blocking=True)
         # Interpret result ...
         dir_max = term_indicator[:, 0]
         dir_min = term_indicator[:, 1]
@@ -174,8 +299,8 @@ class SearchEngine:
         minus_mask = (dir_min - 0.1 < -self.game.win_length)
         draw_mask = (sum_abs + 0.1 > self.action_size)
         value[draw_mask] = 0.0
-        value[plus_mask] = 1.0
-        value[minus_mask] = -1.0
+        value[plus_mask] = 1.05
+        value[minus_mask] = -1.05
         # value = players * value
         terminal_mask = plus_mask | minus_mask | draw_mask
 
@@ -224,22 +349,34 @@ class SearchEngine:
     @profile
     def analyze(self, player, position):
         self.reset(player, position)
-        self.collect_leaves()
+        # self.collect_leaves()
         while True:
-            # Send states to CUDA and start evaluation on GPU ...
-            term_indicator_CUDA, result_CUDA = self.start_evaluation()
             # In the meantime, collect new leaf information ...
             self.collect_leaves()
+            # Send states to CUDA and start evaluation on GPU ...
+            term_indicator_CUDA, result_CUDA = self.start_evaluation()
             # Send CUDA results back to CPU, and process results ...
             self.end_evaluation(term_indicator_CUDA, result_CUDA)
             # Update search tree ...
             self.expand_tree()
+            # print(self.tree)
             self.back_propagate()
             self.update_ucb()
 
             min_MC = torch.min(self.tree.count[:, 1])
-            print(min_MC.item())
+            # print(min_MC.item())
+            # print(round(self.av_num_agent))
             if min_MC > self.num_MC:
                 break
 
-        return
+        # Formulate output ...
+        table = torch.arange(self.num_table)
+        root = torch.ones(self.num_table, dtype=torch.long)
+        position_value = self.tree.value[table, root]
+        root_children = self.tree.get_children(table, root)
+        counts = self.tree.count[table.view(-1, 1), root_children]
+        actions = self.tree.action[table.view(-1, 1), root_children]
+        probs = counts / torch.sum(counts)
+        move_policy = torch.zeros((self.num_table, self.action_size), dtype=torch.float32)
+        move_policy[table.view(-1, 1), actions] = probs
+        return move_policy, position_value

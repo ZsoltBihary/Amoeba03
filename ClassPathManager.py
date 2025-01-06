@@ -31,7 +31,7 @@ class PathManager:
         # self.evaluated_table_idx = torch.arange(args.get('num_table'), dtype=torch.long)
         # self.evaluation_is_on = False
         # # Keep track of root player, node player, and current position, node position on all tables
-        # self.root_player = torch.ones(self.num_table, dtype=torch.int32)
-        # self.root_position = torch.zeros((self.num_table, self.action_size), dtype=torch.int32)
+        # self.player = torch.ones(self.num_table, dtype=torch.int32)
+        # self.position = torch.zeros((self.num_table, self.action_size), dtype=torch.int32)
         # self.node_player = torch.ones(self.num_table, dtype=torch.int32)
         # self.node_position = torch.zeros((self.num_table, self.action_size), dtype=torch.int32)
