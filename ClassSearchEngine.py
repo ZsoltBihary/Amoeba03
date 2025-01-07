@@ -23,7 +23,7 @@ class SearchEngine:
         self.num_child = args.get('num_child')
         self.num_MC = args.get('num_MC')
         self.num_agent = args.get('num_agent')
-        self.num_node = (self.num_MC + 20) * self.num_child
+        self.num_node = (self.num_MC + 200) * self.num_child
         self.action_size = game.action_size
         self.max_depth = game.action_size + 1
         self.CUDA_device = args.get('CUDA_device')
@@ -53,7 +53,7 @@ class SearchEngine:
         self.path = torch.zeros((self.num_agent, self.max_depth), dtype=torch.long)
         # Set up helper attributes
         self.table_order = torch.zeros(self.num_table, dtype=torch.long)
-        self.ucb_penalty = 0.02
+        self.ucb_penalty = 0.1
         # self.branch_penalty = 0.05
         self.av_num_agent = 0.0
 

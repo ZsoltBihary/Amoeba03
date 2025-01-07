@@ -11,19 +11,19 @@ from ClassSearchEngine import SearchEngine
 
 # Collect parameters in a dictionary
 args = {
-    'board_size': 11,
+    'board_size': 15,
     'win_length': 5,
     'CUDA_device': 'cuda' if torch.cuda.is_available() else 'cpu',
     # 'CUDA_device': 'cpu',
     # 'num_leaf': 8,
     # 'num_branch': 2,
-    'num_MC': 100000,
-    'num_child': 20,
-    'num_table': 2,
-    'num_agent': 2000,
+    'num_MC': 800,
+    'num_child': 40,
+    'num_table': 200,
+    'num_agent': 700,
     # 'num_moves': 5,
-    'leaf_buffer_size': 20000,
-    'eval_batch_size': 400,
+    'leaf_buffer_size': 2000,
+    'eval_batch_size': 800,
     'res_channels': 64,
     'hid_channels': 32,
     'num_res': 8,
@@ -35,8 +35,8 @@ game = Amoeba(args)
 
 terminal_check = TerminalCheck01(args)
 # model = TrivialModel01(args)
-model = TrivialModel02(args)
-# model = SimpleModel01(args)
+# model = TrivialModel02(args)
+model = SimpleModel01(args)
 # model = DeepMindModel01(args)
 model.eval()
 engine = SearchEngine(args, game, terminal_check, model)
@@ -45,7 +45,7 @@ player = -torch.ones(args.get('num_table'), dtype=torch.int32)
 position = game.get_random_positions(n_state=args.get('num_table'), n_plus=1, n_minus=0)
 table = torch.arange(args.get('num_table'))
 
-for i in range(40):
+for i in range(10):
     print(i)
     game.print_board(position[0])
     move_policy, position_value = engine.analyze(player, position)
